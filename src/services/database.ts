@@ -403,6 +403,227 @@ export const analyticsService = {
   }
 };
 
+// User Profile operations
+export const userProfileService = {
+  async getProfile(userId: string) {
+    try {
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (error) return handleSupabaseError(error);
+      
+      // Convert snake_case to camelCase
+      const convertedData = {
+        id: data.id,
+        shopName: data.shop_name,
+        currency: data.currency,
+        currencySymbol: data.currency_symbol,
+        subscriptionStatus: data.subscription_status,
+        subscriptionEndDate: data.subscription_end_date,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at
+      };
+      
+      return handleSuccess(convertedData);
+    } catch (error) {
+      return handleSupabaseError(error);
+    }
+  },
+
+  async updateProfile(userId: string, updates: Partial<any>) {
+    try {
+      // Convert camelCase to snake_case for database
+      const dbUpdates: any = {};
+      if (updates.shopName) dbUpdates.shop_name = updates.shopName;
+      if (updates.currency) dbUpdates.currency = updates.currency;
+      if (updates.currencySymbol) dbUpdates.currency_symbol = updates.currencySymbol;
+      if (updates.subscriptionStatus) dbUpdates.subscription_status = updates.subscriptionStatus;
+      if (updates.subscriptionEndDate !== undefined) dbUpdates.subscription_end_date = updates.subscriptionEndDate;
+
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .update(dbUpdates)
+        .eq('id', userId)
+        .select()
+        .single();
+
+      if (error) return handleSupabaseError(error);
+      
+      // Convert back to camelCase
+      const convertedData = {
+        id: data.id,
+        shopName: data.shop_name,
+        currency: data.currency,
+        currencySymbol: data.currency_symbol,
+        subscriptionStatus: data.subscription_status,
+        subscriptionEndDate: data.subscription_end_date,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at
+      };
+      
+      return handleSuccess(convertedData);
+    } catch (error) {
+      return handleSupabaseError(error);
+    }
+  },
+
+  async createProfile(userId: string, profileData: any) {
+    try {
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .insert([{
+          id: userId,
+          shop_name: profileData.shopName || 'My Barber Shop',
+          currency: profileData.currency || 'USD',
+          currency_symbol: profileData.currencySymbol || '$',
+          subscription_status: profileData.subscriptionStatus || 'free',
+          subscription_end_date: profileData.subscriptionEndDate || null
+        }])
+        .select()
+        .single();
+
+      if (error) return handleSupabaseError(error);
+      
+      // Convert back to camelCase
+      const convertedData = {
+        id: data.id,
+        shopName: data.shop_name,
+        currency: data.currency,
+        currencySymbol: data.currency_symbol,
+        subscriptionStatus: data.subscription_status,
+        subscriptionEndDate: data.subscription_end_date,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at
+      };
+      
+      return handleSuccess(convertedData);
+    } catch (error) {
+      return handleSupabaseError(error);
+    }
+  },
+
+  async checkPremiumAccess(userId: string) {
+    try {
+      const { data, error } = await supabase
+        .rpc('has_premium_access', { user_id: userId });
+
+      if (error) return handleSupabaseError(error);
+      return handleSuccess(data);
+    } catch (error) {
+      return handleSupabaseError(error);
+    }
+  }
+};
+
+// App Settings operations
+export const settingsService = {
+  async getSetting(userId: string, key: string) {
+    try {
+      const { data, error } = await supabase
+        .from('app_settings')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('setting_key', key)
+        .single();
+
+      if (error) {
+        if (error.code === 'PGRST116') {
+          // No rows returned, setting doesn't exist
+          return handleSuccess(null);
+        }
+        return handleSupabaseError(error);
+      }
+      
+      // Convert snake_case to camelCase
+      const convertedData = {
+        id: data.id,
+        userId: data.user_id,
+        settingKey: data.setting_key,
+        settingValue: data.setting_value,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at
+      };
+      
+      return handleSuccess(convertedData);
+    } catch (error) {
+      return handleSupabaseError(error);
+    }
+  },
+
+  async getAllSettings(userId: string) {
+    try {
+      const { data, error } = await supabase
+        .from('app_settings')
+        .select('*')
+        .eq('user_id', userId);
+
+      if (error) return handleSupabaseError(error);
+      
+      // Convert snake_case to camelCase
+      const convertedData = (data || []).map(row => ({
+        id: row.id,
+        userId: row.user_id,
+        settingKey: row.setting_key,
+        settingValue: row.setting_value,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at
+      }));
+      
+      return handleSuccess(convertedData);
+    } catch (error) {
+      return handleSupabaseError(error);
+    }
+  },
+
+  async setSetting(userId: string, key: string, value: string) {
+    try {
+      const { data, error } = await supabase
+        .from('app_settings')
+        .upsert({
+          user_id: userId,
+          setting_key: key,
+          setting_value: value
+        })
+        .select()
+        .single();
+
+      if (error) return handleSupabaseError(error);
+      
+      // Convert back to camelCase
+      const convertedData = {
+        id: data.id,
+        userId: data.user_id,
+        settingKey: data.setting_key,
+        settingValue: data.setting_value,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at
+      };
+      
+      return handleSuccess(convertedData);
+    } catch (error) {
+      return handleSupabaseError(error);
+    }
+  },
+
+  async deleteSetting(userId: string, key: string) {
+    try {
+      const { error } = await supabase
+        .from('app_settings')
+        .delete()
+        .eq('user_id', userId)
+        .eq('setting_key', key);
+
+      if (error) return handleSupabaseError(error);
+      return handleSuccess({ key });
+    } catch (error) {
+      return handleSupabaseError(error);
+    }
+  }
+};
+
 // Initialize default templates (run once)
 export const initializeDefaultData = async () => {
   try {

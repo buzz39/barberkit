@@ -90,6 +90,88 @@ INSERT INTO campaigns (name, message, target_segment, status, recipient_count) V
 ('Birthday Wishes January', '🎂 Happy Birthday! We hope you have a wonderful day. Enjoy a special 15% discount on your next visit!', 'birthday', 'sent', 8),
 ('Weekend Promotion', '⭐ Weekend Special: Premium styling package at 25% off. Available Saturday & Sunday only!', 'recent', 'scheduled', 23);
 
+-- Create user_profiles table
+CREATE TABLE user_profiles (
+    id UUID REFERENCES auth.users(id) ON DELETE CASCADE PRIMARY KEY,
+    shop_name VARCHAR(255) DEFAULT 'My Barber Shop',
+    currency VARCHAR(10) DEFAULT 'USD',
+    currency_symbol VARCHAR(5) DEFAULT '$',
+    subscription_status VARCHAR(20) DEFAULT 'free' CHECK (subscription_status IN ('free', 'premium', 'pro')),
+    subscription_end_date TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Create app_settings table for global settings
+CREATE TABLE app_settings (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    setting_key VARCHAR(100) NOT NULL,
+    setting_value TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(user_id, setting_key)
+);
+
+-- Create indexes for user_profiles
+CREATE INDEX idx_user_profiles_subscription_status ON user_profiles(subscription_status);
+CREATE INDEX idx_user_profiles_subscription_end ON user_profiles(subscription_end_date);
+
+-- Create indexes for app_settings
+CREATE INDEX idx_app_settings_user_id ON app_settings(user_id);
+CREATE INDEX idx_app_settings_key ON app_settings(setting_key);
+
+-- Enable Row Level Security for new tables
+ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE app_settings ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for user_profiles
+CREATE POLICY "Users can view own profile" ON user_profiles
+    FOR SELECT USING (auth.uid() = id);
+
+CREATE POLICY "Users can update own profile" ON user_profiles
+    FOR UPDATE USING (auth.uid() = id);
+
+CREATE POLICY "Users can insert own profile" ON user_profiles
+    FOR INSERT WITH CHECK (auth.uid() = id);
+
+-- Create policies for app_settings
+CREATE POLICY "Users can manage own settings" ON app_settings
+    FOR ALL USING (auth.uid() = user_id);
+
+-- Function to create user profile on signup
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO public.user_profiles (id, shop_name, currency, currency_symbol, subscription_status)
+    VALUES (NEW.id, 'My Barber Shop', 'USD', '$', 'free');
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Trigger to automatically create user profile
+CREATE TRIGGER on_auth_user_created
+    AFTER INSERT ON auth.users
+    FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- Function to update updated_at timestamp
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Add triggers for updated_at
+CREATE TRIGGER update_user_profiles_updated_at
+    BEFORE UPDATE ON user_profiles
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_app_settings_updated_at
+    BEFORE UPDATE ON app_settings
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
 -- Function to convert camelCase to snake_case for compatibility
 -- This helps with the JavaScript objects that use camelCase
 CREATE OR REPLACE FUNCTION to_snake_case(text)
@@ -124,4 +206,48 @@ SELECT
     recipient_count as "recipientCount",
     created_at as "createdAt"
 FROM campaigns;
+
+CREATE OR REPLACE VIEW user_profiles_view AS
+SELECT 
+    id,
+    shop_name as "shopName",
+    currency,
+    currency_symbol as "currencySymbol",
+    subscription_status as "subscriptionStatus",
+    subscription_end_date as "subscriptionEndDate",
+    created_at as "createdAt",
+    updated_at as "updatedAt"
+FROM user_profiles;
+
+-- Insert sample premium user (optional - for testing)
+-- Note: This should be done after a real user signs up
+-- INSERT INTO user_profiles (id, shop_name, currency, currency_symbol, subscription_status, subscription_end_date) 
+-- VALUES ('sample-user-id', 'Elite Barber Studio', 'EUR', '€', 'premium', '2024-12-31T23:59:59Z');
+
+-- Function to check if user has premium access
+CREATE OR REPLACE FUNCTION has_premium_access(user_id UUID)
+RETURNS BOOLEAN AS $$
+DECLARE
+    profile_record RECORD;
+BEGIN
+    SELECT subscription_status, subscription_end_date
+    INTO profile_record
+    FROM user_profiles
+    WHERE id = user_id;
+    
+    IF NOT FOUND THEN
+        RETURN FALSE;
+    END IF;
+    
+    IF profile_record.subscription_status = 'free' THEN
+        RETURN FALSE;
+    END IF;
+    
+    IF profile_record.subscription_end_date IS NOT NULL AND profile_record.subscription_end_date < NOW() THEN
+        RETURN FALSE;
+    END IF;
+    
+    RETURN TRUE;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 

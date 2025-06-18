@@ -9,19 +9,23 @@ import {
   X,
   Scissors,
   LogOut,
-  User as UserIcon
+  User as UserIcon,
+  Crown,
+  Lock
 } from 'lucide-react';
 import type { User } from '@supabase/supabase-js';
+import type { UserProfile } from '../types';
 
 interface LayoutProps {
   children: React.ReactNode;
   currentPage: string;
   onPageChange: (page: string) => void;
   user: User | null;
+  userProfile?: UserProfile | null;
   onLogout: () => void;
 }
 
-const Layout: React.FC<LayoutProps> = ({ children, currentPage, onPageChange, user, onLogout }) => {
+const Layout: React.FC<LayoutProps> = ({ children, currentPage, onPageChange, user, userProfile, onLogout }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const navigation = [
@@ -43,7 +47,28 @@ const Layout: React.FC<LayoutProps> = ({ children, currentPage, onPageChange, us
               <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-2 rounded-xl">
                 <Scissors className="h-6 w-6 text-white" />
               </div>
-              <span className="ml-3 text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">BarberPro</span>
+              <div className="ml-3">
+                <span className="block text-lg font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                  {userProfile?.shopName || 'BarberPro'}
+                </span>
+                {userProfile?.subscriptionStatus && (
+                  <div className="flex items-center mt-1">
+                    {userProfile.subscriptionStatus !== 'free' ? (
+                      <>
+                        <Crown className="h-3 w-3 text-yellow-500 mr-1" />
+                        <span className="text-xs text-yellow-600 font-medium uppercase">
+                          {userProfile.subscriptionStatus}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <Lock className="h-3 w-3 text-gray-400 mr-1" />
+                        <span className="text-xs text-gray-500 uppercase">Free</span>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
             <button onClick={() => setSidebarOpen(false)} className="text-gray-400 hover:text-gray-600">
               <X className="h-6 w-6" />
@@ -77,7 +102,28 @@ const Layout: React.FC<LayoutProps> = ({ children, currentPage, onPageChange, us
           <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-2 rounded-xl shadow-lg">
             <Scissors className="h-8 w-8 text-white" />
           </div>
-          <span className="ml-3 text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">BarberPro</span>
+          <div className="ml-3">
+            <span className="block text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+              {userProfile?.shopName || 'BarberPro'}
+            </span>
+            {userProfile?.subscriptionStatus && (
+              <div className="flex items-center mt-1">
+                {userProfile.subscriptionStatus !== 'free' ? (
+                  <>
+                    <Crown className="h-4 w-4 text-yellow-500 mr-1" />
+                    <span className="text-sm text-yellow-600 font-medium uppercase">
+                      {userProfile.subscriptionStatus}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <Lock className="h-4 w-4 text-gray-400 mr-1" />
+                    <span className="text-sm text-gray-500 uppercase">Free Plan</span>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
         </div>
         <nav className="flex-1 px-4 py-6 space-y-2">
           {navigation.map((item) => (
@@ -98,13 +144,33 @@ const Layout: React.FC<LayoutProps> = ({ children, currentPage, onPageChange, us
         
         {/* Sidebar Footer */}
         <div className="p-4 border-t border-gray-200">
-          <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-4">
-            <p className="text-sm font-semibold text-gray-900">Upgrade to Pro</p>
-            <p className="text-xs text-gray-600 mt-1">Unlock advanced features</p>
-            <button className="mt-2 w-full bg-gradient-to-r from-blue-500 to-purple-500 text-white text-xs py-2 px-3 rounded-lg hover:from-blue-600 hover:to-purple-600 transition-all duration-200">
-              Learn More
-            </button>
-          </div>
+          {userProfile?.subscriptionStatus === 'free' ? (
+            <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-4">
+              <p className="text-sm font-semibold text-gray-900">Upgrade to Premium</p>
+              <p className="text-xs text-gray-600 mt-1">Unlock advanced features</p>
+              <button 
+                onClick={() => onPageChange('settings')}
+                className="mt-2 w-full bg-gradient-to-r from-blue-500 to-purple-500 text-white text-xs py-2 px-3 rounded-lg hover:from-blue-600 hover:to-purple-600 transition-all duration-200"
+              >
+                Upgrade Now
+              </button>
+            </div>
+          ) : (
+            <div className="bg-gradient-to-r from-green-50 to-blue-50 rounded-xl p-4">
+              <div className="flex items-center">
+                <Crown className="h-4 w-4 text-yellow-500 mr-2" />
+                <p className="text-sm font-semibold text-gray-900">
+                  {userProfile?.subscriptionStatus?.toUpperCase()} Plan
+                </p>
+              </div>
+              <p className="text-xs text-gray-600 mt-1">All features unlocked</p>
+              {userProfile?.subscriptionEndDate && (
+                <p className="text-xs text-gray-500 mt-2">
+                  Expires: {new Date(userProfile.subscriptionEndDate).toLocaleDateString()}
+                </p>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -139,10 +205,27 @@ const Layout: React.FC<LayoutProps> = ({ children, currentPage, onPageChange, us
                       {user?.user_metadata?.full_name || 'User'}
                     </p>
                     <p className="text-xs text-gray-500">{user?.email}</p>
-                    {user?.user_metadata?.business_name && (
+                    {userProfile?.shopName && (
                       <p className="text-xs text-blue-600 mt-1">
-                        {user.user_metadata.business_name}
+                        {userProfile.shopName}
                       </p>
+                    )}
+                    {userProfile?.subscriptionStatus && (
+                      <div className="flex items-center mt-2">
+                        {userProfile.subscriptionStatus !== 'free' ? (
+                          <>
+                            <Crown className="h-3 w-3 text-yellow-500 mr-1" />
+                            <span className="text-xs text-yellow-600 font-medium uppercase">
+                              {userProfile.subscriptionStatus}
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <Lock className="h-3 w-3 text-gray-400 mr-1" />
+                            <span className="text-xs text-gray-500 uppercase">Free</span>
+                          </>
+                        )}
+                      </div>
                     )}
                   </div>
                   <div className="p-2">

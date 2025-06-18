@@ -4,17 +4,18 @@ import Dashboard from './components/Dashboard';
 import CustomerManagement from './components/CustomerManagement';
 import Communication from './components/Communication';
 import Marketing from './components/Marketing';
+import Settings from './components/Settings';
 import Login from './components/Login';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
-import type { Customer, Analytics, Campaign, WhatsAppTemplate } from './types';
+import type { Customer, Analytics, Campaign, WhatsAppTemplate, UserProfile } from './types';
 import { 
   customerService, 
   campaignService, 
   templateService, 
   analyticsService,
-  initializeDefaultData,
-  authService 
+  userProfileService,
+  initializeDefaultData
 } from './services/database';
 
 function AppContent() {
@@ -24,6 +25,7 @@ function AppContent() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [templates, setTemplates] = useState<WhatsAppTemplate[]>([]);
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -39,6 +41,18 @@ function AppContent() {
 
         // Initialize default data if needed
         await initializeDefaultData();
+
+        // Load user profile first
+        const profileResult = await userProfileService.getProfile(user.id);
+        if (profileResult.success) {
+          setUserProfile(profileResult.data);
+        } else {
+          // If profile doesn't exist, create one
+          const createResult = await userProfileService.createProfile(user.id, {});
+          if (createResult.success) {
+            setUserProfile(createResult.data);
+          }
+        }
 
         // Load all data in parallel
         const [customersResult, campaignsResult, templatesResult, analyticsResult] = await Promise.all([
@@ -237,11 +251,29 @@ function AppContent() {
       setCampaigns([]);
       setTemplates([]);
       setAnalytics(null);
+      setUserProfile(null);
       setCurrentPage('dashboard');
       setError(null);
     } catch (error) {
       console.error('Error signing out:', error);
       alert('Failed to sign out. Please try again.');
+    }
+  };
+
+  // User profile operations
+  const handleUpdateProfile = async (updates: Partial<UserProfile>) => {
+    if (!user || !userProfile) return;
+
+    try {
+      const result = await userProfileService.updateProfile(user.id, updates);
+      if (result.success) {
+        setUserProfile(result.data);
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      throw error;
     }
   };
 
@@ -265,7 +297,13 @@ function AppContent() {
   // Show loading state for data
   if (loading) {
     return (
-      <Layout currentPage={currentPage} onPageChange={setCurrentPage} user={user} onLogout={handleLogout}>
+      <Layout 
+        currentPage={currentPage} 
+        onPageChange={setCurrentPage} 
+        user={user} 
+        userProfile={userProfile}
+        onLogout={handleLogout}
+      >
         <div className="flex items-center justify-center min-h-96">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
@@ -279,7 +317,13 @@ function AppContent() {
   // Show error state
   if (error) {
     return (
-      <Layout currentPage={currentPage} onPageChange={setCurrentPage} user={user} onLogout={handleLogout}>
+      <Layout 
+        currentPage={currentPage} 
+        onPageChange={setCurrentPage} 
+        user={user} 
+        userProfile={userProfile}
+        onLogout={handleLogout}
+      >
         <div className="flex items-center justify-center min-h-96">
           <div className="text-center max-w-md">
             <div className="bg-red-100 rounded-full h-12 w-12 flex items-center justify-center mx-auto mb-4">
@@ -345,19 +389,11 @@ function AppContent() {
         );
       case 'settings':
         return (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">Settings</h2>
-            <div className="space-y-4">
-              <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-                <h3 className="font-semibold text-blue-900 mb-2">Supabase Integration</h3>
-                <p className="text-blue-700 text-sm">Your application is now connected to Supabase!</p>
-                <p className="text-blue-600 text-xs mt-1">All data is automatically synced to the cloud database.</p>
-              </div>
-              <div className="text-gray-600">
-                <p>Settings panel coming soon...</p>
-              </div>
-            </div>
-          </div>
+          <Settings 
+            userProfile={userProfile}
+            onUpdateProfile={handleUpdateProfile}
+            loading={loading}
+          />
         );
       default:
         return <Dashboard analytics={analytics || fallbackAnalytics} />;
@@ -365,7 +401,13 @@ function AppContent() {
   };
 
   return (
-    <Layout currentPage={currentPage} onPageChange={setCurrentPage} user={user} onLogout={handleLogout}>
+    <Layout 
+      currentPage={currentPage} 
+      onPageChange={setCurrentPage} 
+      user={user} 
+      userProfile={userProfile}
+      onLogout={handleLogout}
+    >
       {renderCurrentPage()}
     </Layout>
   );
