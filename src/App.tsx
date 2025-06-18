@@ -44,12 +44,17 @@ function AppContent() {
         await initializeDefaultData();
 
         // Load user profile first
+        console.log('Loading user profile for user:', user.id);
         const profileResult = await userProfileService.getProfile(user.id);
+        console.log('Profile load result:', profileResult);
         if (profileResult.success) {
+          console.log('Setting user profile:', profileResult.data);
           setUserProfile(profileResult.data);
         } else {
           // If profile doesn't exist, create one
+          console.log('Creating new profile for user:', user.id);
           const createResult = await userProfileService.createProfile(user.id, {});
+          console.log('Profile create result:', createResult);
           if (createResult.success) {
             setUserProfile(createResult.data);
           }
@@ -265,9 +270,14 @@ function AppContent() {
   const handleUpdateProfile = async (updates: Partial<UserProfile>) => {
     if (!user || !userProfile) return;
 
+    console.log('handleUpdateProfile called with updates:', updates);
+    console.log('Current userProfile:', userProfile);
+    
     try {
       const result = await userProfileService.updateProfile(user.id, updates);
+      console.log('Update profile result:', result);
       if (result.success) {
+        console.log('Setting new userProfile:', result.data);
         setUserProfile(result.data);
       } else {
         throw new Error(result.error);

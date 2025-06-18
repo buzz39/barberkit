@@ -77,14 +77,13 @@ const Settings: React.FC<SettingsProps> = ({ userProfile, onUpdateProfile, loadi
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
-
-  // Initialize form data when userProfile changes
+  // Initialize form data whenever userProfile changes
   useEffect(() => {
     if (userProfile) {
       setFormData({
-        shopName: userProfile.shopName,
-        currency: userProfile.currency,
-        currencySymbol: userProfile.currencySymbol
+        shopName: userProfile.shopName || '',
+        currency: userProfile.currency || 'USD',
+        currencySymbol: userProfile.currencySymbol || '$'
       });
     }
   }, [userProfile]);
@@ -113,11 +112,21 @@ const Settings: React.FC<SettingsProps> = ({ userProfile, onUpdateProfile, loadi
     setSuccessMessage('');
 
     try {
+      console.log('🔧 SETTINGS DEBUG - Starting save with data:', {
+        shopName: formData.shopName,
+        currency: formData.currency,
+        currencySymbol: formData.currencySymbol,
+        userProfile: userProfile,
+        hasAccess: hasAccess
+      });
+      
       await onUpdateProfile({
         shopName: formData.shopName,
         currency: formData.currency,
         currencySymbol: formData.currencySymbol
       });
+      
+      console.log('✅ SETTINGS DEBUG - Profile update completed successfully');
       
       // Update currency context immediately
       updateCurrency(formData.currency, formData.currencySymbol);
@@ -125,6 +134,7 @@ const Settings: React.FC<SettingsProps> = ({ userProfile, onUpdateProfile, loadi
       setSuccessMessage('Settings updated successfully!');
       setTimeout(() => setSuccessMessage(''), 3000);
     } catch (error) {
+      console.error('❌ SETTINGS DEBUG - Error during save:', error);
       setErrorMessage('Failed to update settings. Please try again.');
       setTimeout(() => setErrorMessage(''), 5000);
     } finally {
