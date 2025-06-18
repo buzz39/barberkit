@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import type { UserProfile, ShopSettings } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { useCurrency } from '../contexts/CurrencyContext';
 
 interface SettingsProps {
   userProfile: UserProfile | null;
@@ -61,6 +62,7 @@ const SUBSCRIPTION_FEATURES = {
 
 const Settings: React.FC<SettingsProps> = ({ userProfile, onUpdateProfile, loading = false }) => {
   const { user } = useAuth();
+  const { updateCurrency } = useCurrency();
   const [formData, setFormData] = useState<ShopSettings>({
     shopName: '',
     currency: 'USD',
@@ -110,6 +112,10 @@ const Settings: React.FC<SettingsProps> = ({ userProfile, onUpdateProfile, loadi
         currency: formData.currency,
         currencySymbol: formData.currencySymbol
       });
+      
+      // Update currency context immediately
+      updateCurrency(formData.currency, formData.currencySymbol);
+      
       setSuccessMessage('Settings updated successfully!');
       setTimeout(() => setSuccessMessage(''), 3000);
     } catch (error) {

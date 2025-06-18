@@ -11,6 +11,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 import type { Customer } from '../types';
+import { useCurrency } from '../contexts/CurrencyContext';
 import CustomerForm from './CustomerForm';
 
 interface CustomerManagementProps {
@@ -26,6 +27,7 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({
   onEditCustomer,
   onDeleteCustomer
 }) => {
+  const { formatCurrency } = useCurrency();
   const [showForm, setShowForm] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -217,7 +219,7 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm font-medium text-gray-900">${customer.paymentAmount}</span>
+                      <span className="text-sm font-medium text-gray-900">{formatCurrency(customer.paymentAmount)}</span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center space-x-2">

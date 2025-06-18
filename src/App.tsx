@@ -7,6 +7,7 @@ import Marketing from './components/Marketing';
 import Settings from './components/Settings';
 import Login from './components/Login';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { CurrencyProvider } from './contexts/CurrencyContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import type { Customer, Analytics, Campaign, WhatsAppTemplate, UserProfile } from './types';
 import { 
@@ -19,7 +20,7 @@ import {
 } from './services/database';
 
 function AppContent() {
-  const { user, authLoading, signOut } = useAuth();
+  const { user, loading: authLoading, signOut } = useAuth();
   const [currentPage, setCurrentPage] = useState('dashboard');
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -401,15 +402,17 @@ function AppContent() {
   };
 
   return (
-    <Layout 
-      currentPage={currentPage} 
-      onPageChange={setCurrentPage} 
-      user={user} 
-      userProfile={userProfile}
-      onLogout={handleLogout}
-    >
-      {renderCurrentPage()}
-    </Layout>
+    <CurrencyProvider userProfile={userProfile}>
+      <Layout 
+        currentPage={currentPage} 
+        onPageChange={setCurrentPage} 
+        user={user} 
+        userProfile={userProfile}
+        onLogout={handleLogout}
+      >
+        {renderCurrentPage()}
+      </Layout>
+    </CurrencyProvider>
   );
 }
 

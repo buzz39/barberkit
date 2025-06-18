@@ -11,12 +11,15 @@ import {
   ArrowUp
 } from 'lucide-react';
 import type { Analytics } from '../types';
+import { useCurrency } from '../contexts/CurrencyContext';
 
 interface DashboardProps {
   analytics: Analytics;
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ analytics }) => {
+  const { formatCurrency } = useCurrency();
+  
   const stats = [
     {
       name: "Today's Customers",
@@ -28,7 +31,7 @@ const Dashboard: React.FC<DashboardProps> = ({ analytics }) => {
     },
     {
       name: "Today's Revenue",
-      value: `$${analytics.todayRevenue}`,
+      value: formatCurrency(analytics.todayRevenue),
       change: '+8%',
       changeType: 'positive',
       icon: DollarSign,
@@ -44,7 +47,7 @@ const Dashboard: React.FC<DashboardProps> = ({ analytics }) => {
     },
     {
       name: 'Monthly Revenue',
-      value: `$${analytics.monthlyRevenue}`,
+      value: formatCurrency(analytics.monthlyRevenue),
       change: '+18%',
       changeType: 'positive',
       icon: Calendar,
