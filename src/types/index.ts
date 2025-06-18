@@ -15,6 +15,10 @@ export interface Service {
   name: string;
   price: number;
   duration: number; // in minutes
+  description?: string;
+  isActive?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Analytics {

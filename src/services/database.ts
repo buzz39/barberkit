@@ -1,5 +1,5 @@
 import { supabase, handleSupabaseError, handleSuccess } from '../lib/supabase';
-import type { Customer, Campaign, WhatsAppTemplate, Analytics } from '../types';
+import type { Customer, Campaign, WhatsAppTemplate, Analytics, Service } from '../types';
 
 // Customer operations
 export const customerService = {
@@ -618,6 +618,151 @@ export const settingsService = {
 
       if (error) return handleSupabaseError(error);
       return handleSuccess({ key });
+    } catch (error) {
+      return handleSupabaseError(error);
+    }
+  }
+};
+
+// Service operations
+export const serviceService = {
+  async getAll(userId: string) {
+    try {
+      const { data, error } = await supabase
+        .from('services')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false });
+
+      if (error) return handleSupabaseError(error);
+      
+      // Convert snake_case to camelCase
+      const convertedData = (data || []).map(row => ({
+        id: row.id,
+        name: row.name,
+        price: row.price,
+        duration: row.duration,
+        description: row.description,
+        isActive: row.is_active,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at
+      }));
+      
+      return handleSuccess(convertedData);
+    } catch (error) {
+      return handleSupabaseError(error);
+    }
+  },
+
+  async create(userId: string, serviceData: Omit<Service, 'id'>) {
+    try {
+      const { data, error } = await supabase
+        .from('services')
+        .insert([{
+          user_id: userId,
+          name: serviceData.name,
+          price: serviceData.price,
+          duration: serviceData.duration,
+          description: serviceData.description,
+          is_active: true
+        }])
+        .select()
+        .single();
+
+      if (error) return handleSupabaseError(error);
+      
+      // Convert back to camelCase
+      const convertedData = {
+        id: data.id,
+        name: data.name,
+        price: data.price,
+        duration: data.duration,
+        description: data.description,
+        isActive: data.is_active,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at
+      };
+      
+      return handleSuccess(convertedData);
+    } catch (error) {
+      return handleSupabaseError(error);
+    }
+  },
+
+  async update(serviceId: string, updates: Partial<Service>) {
+    try {
+      // Convert camelCase to snake_case for database
+      const dbUpdates: any = {};
+      if (updates.name) dbUpdates.name = updates.name;
+      if (updates.price !== undefined) dbUpdates.price = updates.price;
+      if (updates.duration !== undefined) dbUpdates.duration = updates.duration;
+      if (updates.description !== undefined) dbUpdates.description = updates.description;
+      if (updates.isActive !== undefined) dbUpdates.is_active = updates.isActive;
+
+      const { data, error } = await supabase
+        .from('services')
+        .update(dbUpdates)
+        .eq('id', serviceId)
+        .select()
+        .single();
+
+      if (error) return handleSupabaseError(error);
+      
+      // Convert back to camelCase
+      const convertedData = {
+        id: data.id,
+        name: data.name,
+        price: data.price,
+        duration: data.duration,
+        description: data.description,
+        isActive: data.is_active,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at
+      };
+      
+      return handleSuccess(convertedData);
+    } catch (error) {
+      return handleSupabaseError(error);
+    }
+  },
+
+  async delete(serviceId: string) {
+    try {
+      // Soft delete by setting is_active to false
+      const { error } = await supabase
+        .from('services')
+        .update({ is_active: false })
+        .eq('id', serviceId);
+
+      if (error) return handleSupabaseError(error);
+      return handleSuccess({ id: serviceId });
+    } catch (error) {
+      return handleSupabaseError(error);
+    }
+  },
+
+  async getActive(userId: string) {
+    try {
+      const { data, error } = await supabase
+        .from('services')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('is_active', true)
+        .order('name');
+
+      if (error) return handleSupabaseError(error);
+      
+      // Convert snake_case to camelCase
+      const convertedData = (data || []).map(row => ({
+        id: row.id,
+        name: row.name,
+        price: row.price,
+        duration: row.duration,
+        description: row.description
+      }));
+      
+      return handleSuccess(convertedData);
     } catch (error) {
       return handleSupabaseError(error);
     }

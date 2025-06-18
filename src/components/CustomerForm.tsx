@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save } from 'lucide-react';
+import { X, Save, RefreshCw } from 'lucide-react';
 import { useCurrency } from '../contexts/CurrencyContext';
-import type { Customer, UserProfile } from '../types';
+import { useAuth } from '../contexts/AuthContext';
+import { serviceService } from '../services/database';
+import type { Customer, UserProfile, Service } from '../types';
 
 interface CustomerFormProps {
   onSubmit: (customerData: Omit<Customer, 'id' | 'createdAt'>) => void;
@@ -12,6 +14,7 @@ interface CustomerFormProps {
 
 const CustomerForm: React.FC<CustomerFormProps> = ({ onSubmit, initialData, userProfile, onCancel }) => {
   const { currencySymbol, currency } = useCurrency();
+  const { user } = useAuth();
   const [formData, setFormData] = useState({
     name: '',
     mobile: '',
@@ -23,9 +26,29 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ onSubmit, initialData, user
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
-  
-  // Available services
-  const services = ['Haircut', 'Beard Trim', 'Shave', 'Hair Wash', 'Styling', 'Facial'];
+  const [availableServices, setAvailableServices] = useState<Service[]>([]);
+  const [servicesLoading, setServicesLoading] = useState(true);
+
+  // Load available services
+  useEffect(() => {
+    const loadServices = async () => {
+      if (!user) return;
+      
+      setServicesLoading(true);
+      try {
+        const result = await serviceService.getActive(user.id);
+        if (result.success && result.data) {
+          setAvailableServices(result.data);
+        }
+      } catch (error) {
+        console.error('Failed to load services:', error);
+      } finally {
+        setServicesLoading(false);
+      }
+    };
+
+    loadServices();
+  }, [user]);
 
   useEffect(() => {
     if (initialData) {
@@ -160,22 +183,40 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ onSubmit, initialData, user
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Services *
           </label>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            {services.map((service) => (
-              <button
-                key={service}
-                type="button"
-                onClick={() => handleServiceToggle(service)}
-                className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${
-                  formData.services.includes(service)
-                    ? 'bg-blue-50 border-blue-300 text-blue-700'
-                    : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-                }`}
-              >
-                {service}
-              </button>
-            ))}
-          </div>
+          {servicesLoading ? (
+            <div className="flex items-center justify-center py-8 border-2 border-dashed border-gray-300 rounded-lg">
+              <RefreshCw className="h-5 w-5 animate-spin text-gray-400 mr-2" />
+              <span className="text-gray-500">Loading services...</span>
+            </div>
+          ) : availableServices.length === 0 ? (
+            <div className="text-center py-8 border-2 border-dashed border-gray-300 rounded-lg">
+              <p className="text-gray-500 mb-2">No services available</p>
+              <p className="text-sm text-gray-400">Add services in Settings to get started</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              {availableServices.map((service) => (
+                <button
+                  key={service.id}
+                  type="button"
+                  onClick={() => handleServiceToggle(service.name)}
+                  className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors text-left ${
+                    formData.services.includes(service.name)
+                      ? 'bg-blue-50 border-blue-300 text-blue-700'
+                      : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                  }`}
+                  title={service.description || service.name}
+                >
+                  <div>
+                    <div className="font-medium">{service.name}</div>
+                    <div className="text-xs opacity-75">
+                      {currencySymbol}{service.price.toFixed(2)} • {service.duration}min
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
           {errors.services && <p className="mt-1 text-sm text-red-600">{errors.services}</p>}
         </div>
 

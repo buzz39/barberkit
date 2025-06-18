@@ -113,6 +113,19 @@ CREATE TABLE app_settings (
     UNIQUE(user_id, setting_key)
 );
 
+-- Create services table for shop services
+CREATE TABLE services (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    price DECIMAL(10,2) NOT NULL DEFAULT 0,
+    duration INTEGER NOT NULL DEFAULT 30, -- in minutes
+    description TEXT,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Create indexes for user_profiles
 CREATE INDEX idx_user_profiles_subscription_status ON user_profiles(subscription_status);
 CREATE INDEX idx_user_profiles_subscription_end ON user_profiles(subscription_end_date);
@@ -121,9 +134,15 @@ CREATE INDEX idx_user_profiles_subscription_end ON user_profiles(subscription_en
 CREATE INDEX idx_app_settings_user_id ON app_settings(user_id);
 CREATE INDEX idx_app_settings_key ON app_settings(setting_key);
 
+-- Create indexes for services
+CREATE INDEX idx_services_user_id ON services(user_id);
+CREATE INDEX idx_services_active ON services(is_active);
+CREATE INDEX idx_services_name ON services(name);
+
 -- Enable Row Level Security for new tables
 ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE app_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE services ENABLE ROW LEVEL SECURITY;
 
 -- Create policies for user_profiles
 CREATE POLICY "Users can view own profile" ON user_profiles
@@ -137,6 +156,10 @@ CREATE POLICY "Users can insert own profile" ON user_profiles
 
 -- Create policies for app_settings
 CREATE POLICY "Users can manage own settings" ON app_settings
+    FOR ALL USING (auth.uid() = user_id);
+
+-- Create policies for services
+CREATE POLICY "Users can manage own services" ON services
     FOR ALL USING (auth.uid() = user_id);
 
 -- Function to create user profile on signup

@@ -10,11 +10,17 @@ import {
   Save,
   RefreshCw,
   CreditCard,
-  Zap
+  Zap,
+  Plus,
+  Edit2,
+  Trash2,
+  Clock,
+  X
 } from 'lucide-react';
-import type { UserProfile, ShopSettings } from '../types';
+import type { UserProfile, ShopSettings, Service } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { useCurrency } from '../contexts/CurrencyContext';
+import { serviceService } from '../services/database';
 
 interface SettingsProps {
   userProfile: UserProfile | null;
@@ -397,22 +403,460 @@ const Settings: React.FC<SettingsProps> = ({ userProfile, onUpdateProfile, loadi
         </div>
       </div>
 
-      {/* Additional Settings (Future) */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Additional Settings</h2>
-        <div className="space-y-4 text-gray-600">
-          <p className="flex items-center">
-            <span className="inline-block w-2 h-2 bg-blue-500 rounded-full mr-3"></span>
-            Notification preferences - Coming soon
-          </p>
-          <p className="flex items-center">
-            <span className="inline-block w-2 h-2 bg-purple-500 rounded-full mr-3"></span>
-            Theme customization - Coming soon
-          </p>
-          <p className="flex items-center">
-            <span className="inline-block w-2 h-2 bg-green-500 rounded-full mr-3"></span>
-            Integration settings - Coming soon
-          </p>
+{/* Services Management */}
+<div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+  <h2 className="text-lg font-semibold text-gray-900 mb-4">Manage Services</h2>
+  <ServiceList />
+</div>
+
+{/* Additional Settings (Future) */}
+<div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+  <h2 className="text-lg font-semibold text-gray-900 mb-4">Additional Settings</h2>
+  <div className="space-y-4 text-gray-600">
+    <p className="flex items-center">
+      <span className="inline-block w-2 h-2 bg-blue-500 rounded-full mr-3"></span>
+      Notification preferences - Coming soon
+    </p>
+    <p className="flex items-center">
+      <span className="inline-block w-2 h-2 bg-purple-500 rounded-full mr-3"></span>
+      Theme customization - Coming soon
+    </p>
+    <p className="flex items-center">
+      <span className="inline-block w-2 h-2 bg-green-500 rounded-full mr-3"></span>
+      Integration settings - Coming soon
+    </p>
+  </div>
+      </div>
+    </div>
+  );
+};
+
+// ServiceList Component for managing services
+const ServiceList: React.FC = () => {
+  const { user } = useAuth();
+  const { currencySymbol } = useCurrency();
+  const [services, setServices] = useState<Service[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isEditing, setIsEditing] = useState<string | null>(null);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [formData, setFormData] = useState({
+    name: '',
+    price: '',
+    duration: '',
+    description: ''
+  });
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  // Load services on mount
+  useEffect(() => {
+    loadServices();
+  }, []);
+
+  const loadServices = async () => {
+    if (!user) return;
+    
+    setIsLoading(true);
+    try {
+      const result = await serviceService.getAll(user.id);
+      if (result.success && result.data) {
+        setServices(result.data);
+      } else {
+        setError(result.error || 'Failed to load services');
+      }
+    } catch (err) {
+      setError('Failed to load services');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleAddService = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+
+    try {
+      const serviceData = {
+        name: formData.name,
+        price: parseFloat(formData.price),
+        duration: parseInt(formData.duration),
+        description: formData.description || undefined
+      };
+
+      const result = await serviceService.create(user.id, serviceData);
+      if (result.success && result.data) {
+        setServices([...services, result.data]);
+        setFormData({ name: '', price: '', duration: '', description: '' });
+        setShowAddForm(false);
+        setSuccess('Service added successfully!');
+        setTimeout(() => setSuccess(null), 3000);
+      } else {
+        setError(result.error || 'Failed to add service');
+      }
+    } catch (err) {
+      setError('Failed to add service');
+    }
+  };
+
+  const handleUpdateService = async (serviceId: string, updates: Partial<Service>) => {
+    try {
+      const result = await serviceService.update(serviceId, updates);
+      if (result.success && result.data) {
+        setServices(services.map(service => 
+          service.id === serviceId ? result.data : service
+        ));
+        setIsEditing(null);
+        setSuccess('Service updated successfully!');
+        setTimeout(() => setSuccess(null), 3000);
+      } else {
+        setError(result.error || 'Failed to update service');
+      }
+    } catch (err) {
+      setError('Failed to update service');
+    }
+  };
+
+  const handleDeleteService = async (serviceId: string) => {
+    if (!confirm('Are you sure you want to delete this service?')) return;
+
+    try {
+      const result = await serviceService.delete(serviceId);
+      if (result.success) {
+        setServices(services.filter(service => service.id !== serviceId));
+        setSuccess('Service deleted successfully!');
+        setTimeout(() => setSuccess(null), 3000);
+      } else {
+        setError(result.error || 'Failed to delete service');
+      }
+    } catch (err) {
+      setError('Failed to delete service');
+    }
+  };
+
+  const resetForm = () => {
+    setFormData({ name: '', price: '', duration: '', description: '' });
+    setShowAddForm(false);
+    setIsEditing(null);
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <RefreshCw className="h-6 w-6 animate-spin text-blue-600" />
+        <span className="ml-2 text-gray-600">Loading services...</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Success/Error Messages */}
+      {success && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-center">
+          <CheckCircle className="h-5 w-5 text-green-600 mr-2" />
+          <span className="text-green-800">{success}</span>
+        </div>
+      )}
+      
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-center">
+          <AlertTriangle className="h-5 w-5 text-red-600 mr-2" />
+          <span className="text-red-800">{error}</span>
+          <button 
+            onClick={() => setError(null)}
+            className="ml-auto text-red-600 hover:text-red-800"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Add Service Button */}
+      <div className="flex justify-between items-center">
+        <p className="text-gray-600">Manage the services you offer to your customers</p>
+        <button
+          onClick={() => setShowAddForm(!showAddForm)}
+          className="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center"
+        >
+          <Plus className="h-4 w-4 mr-2" />
+          Add Service
+        </button>
+      </div>
+
+      {/* Add Service Form */}
+      {showAddForm && (
+        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Add New Service</h3>
+          <form onSubmit={handleAddService} className="space-y-4">
+            <div className="grid md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Service Name *
+                </label>
+                <input
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="e.g., Haircut"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Price ({currencySymbol}) *
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={formData.price}
+                  onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="25.00"
+                  required
+                />
+              </div>
+            </div>
+            <div className="grid md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Duration (minutes) *
+                </label>
+                <input
+                  type="number"
+                  value={formData.duration}
+                  onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="30"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Description
+                </label>
+                <input
+                  type="text"
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Brief description (optional)"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end space-x-3">
+              <button
+                type="button"
+                onClick={resetForm}
+                className="px-4 py-2 text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add Service
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Services List */}
+      {services.length === 0 ? (
+        <div className="text-center py-8 border-2 border-dashed border-gray-300 rounded-lg">
+          <div className="bg-gray-100 rounded-full p-4 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+            <Store className="h-8 w-8 text-gray-400" />
+          </div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">No Services Added</h3>
+          <p className="text-gray-600 mb-4">Add your first service to get started</p>
+          <button
+            onClick={() => setShowAddForm(true)}
+            className="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700 transition-colors"
+          >
+            Add Your First Service
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {services.map((service) => (
+            <ServiceItem
+              key={service.id}
+              service={service}
+              isEditing={isEditing === service.id}
+              onEdit={() => setIsEditing(service.id)}
+              onCancelEdit={() => setIsEditing(null)}
+              onUpdate={(updates) => handleUpdateService(service.id, updates)}
+              onDelete={() => handleDeleteService(service.id)}
+              currencySymbol={currencySymbol}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ServiceItem Component for individual service management
+interface ServiceItemProps {
+  service: Service;
+  isEditing: boolean;
+  onEdit: () => void;
+  onCancelEdit: () => void;
+  onUpdate: (updates: Partial<Service>) => void;
+  onDelete: () => void;
+  currencySymbol: string;
+}
+
+const ServiceItem: React.FC<ServiceItemProps> = ({
+  service,
+  isEditing,
+  onEdit,
+  onCancelEdit,
+  onUpdate,
+  onDelete,
+  currencySymbol
+}) => {
+  const [editData, setEditData] = useState({
+    name: service.name,
+    price: service.price.toString(),
+    duration: service.duration.toString(),
+    description: service.description || ''
+  });
+
+  const handleSave = () => {
+    onUpdate({
+      name: editData.name,
+      price: parseFloat(editData.price),
+      duration: parseInt(editData.duration),
+      description: editData.description || undefined
+    });
+  };
+
+  const handleCancel = () => {
+    setEditData({
+      name: service.name,
+      price: service.price.toString(),
+      duration: service.duration.toString(),
+      description: service.description || ''
+    });
+    onCancelEdit();
+  };
+
+  if (isEditing) {
+    return (
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <h4 className="text-lg font-semibold text-gray-900 mb-3">Edit Service</h4>
+        <div className="space-y-3">
+          <div className="grid md:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Service Name
+              </label>
+              <input
+                type="text"
+                value={editData.name}
+                onChange={(e) => setEditData({ ...editData, name: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Price ({currencySymbol})
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                value={editData.price}
+                onChange={(e) => setEditData({ ...editData, price: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+          </div>
+          <div className="grid md:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Duration (minutes)
+              </label>
+              <input
+                type="number"
+                value={editData.duration}
+                onChange={(e) => setEditData({ ...editData, duration: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Description
+              </label>
+              <input
+                type="text"
+                value={editData.description}
+                onChange={(e) => setEditData({ ...editData, description: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Optional description"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end space-x-3">
+            <button
+              onClick={handleCancel}
+              className="px-4 py-2 text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center"
+            >
+              <Save className="h-4 w-4 mr-2" />
+              Save Changes
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-sm transition-shadow">
+      <div className="flex items-center justify-between">
+        <div className="flex-1">
+          <div className="flex items-center space-x-4">
+            <div>
+              <h4 className="text-lg font-semibold text-gray-900">{service.name}</h4>
+              {service.description && (
+                <p className="text-sm text-gray-600">{service.description}</p>
+              )}
+            </div>
+            <div className="text-right">
+              <div className="text-lg font-bold text-green-600">
+                {currencySymbol}{service.price.toFixed(2)}
+              </div>
+              <div className="flex items-center text-sm text-gray-500">
+                <Clock className="h-4 w-4 mr-1" />
+                {service.duration} min
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center space-x-2 ml-4">
+          <button
+            onClick={onEdit}
+            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+            title="Edit service"
+          >
+            <Edit2 className="h-4 w-4" />
+          </button>
+          <button
+            onClick={onDelete}
+            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+            title="Delete service"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
         </div>
       </div>
     </div>
