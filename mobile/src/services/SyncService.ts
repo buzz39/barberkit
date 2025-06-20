@@ -1,28 +1,33 @@
-import NetInfo from '@react-native-community/netinfo';
+import * as Network from 'expo-network';
 import { LocalStorageService } from './LocalStorageService';
 import { SupabaseService } from './SupabaseService';
 import { SyncOperation, Customer } from '../types';
-import { v4 as uuidv4 } from 'react-native-uuid';
 
 export class SyncService {
   private static isOnline = false;
   private static syncInProgress = false;
 
   static async initialize(): Promise<void> {
-    // Monitor network status
-    NetInfo.addEventListener(state => {
+    // Get initial network status
+    const networkState = await Network.getNetworkStateAsync();
+    this.isOnline = networkState.isConnected || false;
+
+    // Monitor network status changes
+    this.startNetworkMonitoring();
+  }
+
+  private static startNetworkMonitoring() {
+    // Check network status periodically
+    setInterval(async () => {
+      const networkState = await Network.getNetworkStateAsync();
       const wasOffline = !this.isOnline;
-      this.isOnline = state.isConnected || false;
+      this.isOnline = networkState.isConnected || false;
       
       // If we just came back online, trigger sync
       if (wasOffline && this.isOnline) {
         this.syncPendingOperations();
       }
-    });
-
-    // Get initial network status
-    const state = await NetInfo.fetch();
-    this.isOnline = state.isConnected || false;
+    }, 5000); // Check every 5 seconds
   }
 
   static async queueOperation(
@@ -31,7 +36,7 @@ export class SyncService {
     data: any
   ): Promise<void> {
     const syncOperation: SyncOperation = {
-      id: uuidv4(),
+      id: Math.random().toString(36).substr(2, 9),
       table,
       operation,
       data,
