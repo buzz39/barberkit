@@ -1,13 +1,56 @@
 export interface Customer {
   id: string;
+  userId: string;
   name: string;
   mobile: string;
+  birthday?: string;
+  notes?: string;
+  totalVisits: number;
+  totalSpent: number;
+  lastVisitDate?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Visit {
+  id: string;
+  customerId: string;
   visitDate: string;
   services: string[];
   paymentAmount: number;
-  birthday?: string;
   notes?: string;
   createdAt: string;
+}
+
+// Combined type for displaying customer with their latest visit info
+export interface CustomerWithLatestVisit extends Customer {
+  latestVisit?: Visit;
+  visits?: Visit[];
+}
+
+// Type for creating a new visit
+export interface NewVisit {
+  customerId: string;
+  visitDate: string;
+  services: string[];
+  paymentAmount: number;
+  notes?: string;
+}
+
+// Type for adding a new customer with their first visit
+export interface NewCustomerWithVisit {
+  customer: {
+    name: string;
+    mobile: string;
+    birthday?: string;
+    notes?: string;
+  };
+  visit: {
+    visitDate: string;
+    services: string[];
+    paymentAmount: number;
+    notes?: string;
+  };
 }
 
 export interface Service {
@@ -28,8 +71,12 @@ export interface Analytics {
   weeklyRevenue: number;
   monthlyCustomers: number;
   monthlyRevenue: number;
+  totalCustomers: number;
+  averageVisitValue: number;
   popularServices: { name: string; count: number }[];
   upcomingBirthdays: { name: string; birthday: string; mobile: string }[];
+  recentVisits: Visit[];
+  topCustomers: { name: string; totalSpent: number; totalVisits: number }[];
 }
 
 export interface Campaign {
@@ -94,7 +141,8 @@ export interface SubscriptionInfo {
 
 // Loading and error states
 export interface AppState {
-  customers: Customer[];
+  customers: CustomerWithLatestVisit[];
+  visits: Visit[];
   campaigns: Campaign[];
   templates: WhatsAppTemplate[];
   analytics: Analytics | null;

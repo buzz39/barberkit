@@ -9,9 +9,10 @@ import Login from './components/Login';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { CurrencyProvider } from './contexts/CurrencyContext';
 import ProtectedRoute from './components/ProtectedRoute';
-import type { Customer, Analytics, Campaign, WhatsAppTemplate, UserProfile } from './types';
+import type { Customer, CustomerWithLatestVisit, NewCustomerWithVisit, NewVisit, Analytics, Campaign, WhatsAppTemplate, UserProfile } from './types';
 import { 
   customerService, 
+  visitService,
   campaignService, 
   templateService, 
   analyticsService,
@@ -22,7 +23,7 @@ import {
 function AppContent() {
   const { user, loading: authLoading, signOut } = useAuth();
   const [currentPage, setCurrentPage] = useState('dashboard');
-  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [customers, setCustomers] = useState<CustomerWithLatestVisit[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [templates, setTemplates] = useState<WhatsAppTemplate[]>([]);
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
@@ -62,7 +63,7 @@ function AppContent() {
 
         // Load all data in parallel
         const [customersResult, campaignsResult, templatesResult, analyticsResult] = await Promise.all([
-          customerService.getAll(),
+          customerService.getAll(user.id), // Pass user ID for new schema
           campaignService.getAll(),
           templateService.getAll(),
           analyticsService.getAnalytics()
@@ -103,10 +104,18 @@ function AppContent() {
     loadData();
   }, [user]);
 
-  // Customer operations
-  const handleAddCustomer = async (customerData: Omit<Customer, 'id' | 'createdAt'>) => {
+  // Customer operations - Updated for new system
+  const handleAddCustomer = async (customerData: NewCustomerWithVisit | Omit<Customer, 'id' | 'createdAt'>) => {
     try {
-      const result = await customerService.create(customerData);
+      let result;
+      if (user && 'customer' in customerData) {
+        // New format: customer with visit
+        result = await customerService.create(user.id, customerData);
+      } else {
+        // Legacy format: direct customer data
+        result = await customerService.create(customerData as Omit<Customer, 'id' | 'createdAt'>);
+      }
+      
       if (result.success) {
         setCustomers(prev => [result.data, ...prev]);
         // Refresh analytics
@@ -124,13 +133,44 @@ function AppContent() {
     }
   };
 
-  const handleEditCustomer = async (id: string, updates: Partial<Customer>) => {
+  // New visit operations
+  const handleAddVisit = async (visitData: NewVisit) => {
+    try {
+      const result = await visitService.create(visitData);
+      if (result.success) {
+        // Refresh customer list to get updated statistics
+        if (user) {
+          const customersResult = await customerService.getAll(user.id);
+          if (customersResult.success) {
+            setCustomers(customersResult.data);
+          }
+        }
+        // Refresh analytics
+        const analyticsResult = await analyticsService.getAnalytics();
+        if (analyticsResult.success) {
+          setAnalytics(analyticsResult.data);
+        }
+        alert('Visit added successfully!');
+      } else {
+        alert(`Error adding visit: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Error adding visit:', error);
+      alert('Failed to add visit. Please try again.');
+    }
+  };
+
+  const handleEditCustomer = async (id: string, updates: Partial<CustomerWithLatestVisit>) => {
     try {
       const result = await customerService.update(id, updates);
       if (result.success) {
-        setCustomers(prev => prev.map(customer => 
-          customer.id === id ? result.data : customer
-        ));
+        // Refresh customer list to get complete data
+        if (user) {
+          const customersResult = await customerService.getAll(user.id);
+          if (customersResult.success) {
+            setCustomers(customersResult.data);
+          }
+        }
         // Refresh analytics
         const analyticsResult = await analyticsService.getAnalytics();
         if (analyticsResult.success) {
@@ -375,6 +415,7 @@ function AppContent() {
           <CustomerManagement 
             customers={customers}
             onAddCustomer={handleAddCustomer}
+            onAddVisit={handleAddVisit}
             onEditCustomer={handleEditCustomer}
             onDeleteCustomer={handleDeleteCustomer}
           />

@@ -2,17 +2,18 @@ import React, { useState, useEffect } from 'react';
 import { X, Save, RefreshCw } from 'lucide-react';
 import { useCurrency } from '../contexts/CurrencyContext';
 import { useAuth } from '../contexts/AuthContext';
-import { serviceService } from '../services/database';
-import type { Customer, UserProfile, Service } from '../types';
+import { serviceService, customerService } from '../services/database';
+import type { Customer, UserProfile, Service, NewCustomerWithVisit, NewVisit } from '../types';
 
 interface CustomerFormProps {
-  onSubmit: (customerData: Omit<Customer, 'id' | 'createdAt'>) => void;
+  onSubmit: (customerData: NewCustomerWithVisit | NewVisit) => void;
   initialData?: Customer;
   userProfile?: UserProfile | null;
   onCancel?: () => void;
+  isExistingCustomer?: boolean;
 }
 
-const CustomerForm: React.FC<CustomerFormProps> = ({ onSubmit, initialData, userProfile, onCancel }) => {
+const CustomerForm: React.FC<CustomerFormProps> = ({ onSubmit, initialData, userProfile, onCancel, isExistingCustomer = false }) => {
   const { currencySymbol, currency } = useCurrency();
   const { user } = useAuth();
   const [formData, setFormData] = useState({
@@ -22,12 +23,15 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ onSubmit, initialData, user
     services: [] as string[],
     paymentAmount: '',
     birthday: '',
-    notes: ''
+    notes: '',
+    visitNotes: '' // Separate notes for the visit
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [availableServices, setAvailableServices] = useState<Service[]>([]);
   const [servicesLoading, setServicesLoading] = useState(true);
+  const [existingCustomer, setExistingCustomer] = useState<Customer | null>(null);
+  const [checkingCustomer, setCheckingCustomer] = useState(false);
 
   // Load available services
   useEffect(() => {
@@ -55,14 +59,57 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ onSubmit, initialData, user
       setFormData({
         name: initialData.name,
         mobile: initialData.mobile,
-        visitDate: initialData.visitDate.split('T')[0],
-        services: initialData.services,
-        paymentAmount: initialData.paymentAmount.toString(),
+        visitDate: new Date().toISOString().split('T')[0], // Always today for new visits
+        services: [],
+        paymentAmount: '',
         birthday: initialData.birthday?.split('T')[0] || '',
-        notes: initialData.notes || ''
+        notes: initialData.notes || '',
+        visitNotes: ''
       });
+      setExistingCustomer(initialData);
     }
   }, [initialData]);
+
+  // Check for existing customer when mobile number changes
+  const checkExistingCustomer = async (mobile: string) => {
+    if (!user || !mobile || mobile.length < 5) {
+      setExistingCustomer(null);
+      return;
+    }
+
+    setCheckingCustomer(true);
+    try {
+      const result = await customerService.findByMobile(user.id, mobile);
+      if (result.success && result.data) {
+        setExistingCustomer(result.data);
+        // Pre-populate customer info
+        setFormData(prev => ({
+          ...prev,
+          name: result.data.name,
+          birthday: result.data.birthday?.split('T')[0] || '',
+          notes: result.data.notes || ''
+        }));
+      } else {
+        setExistingCustomer(null);
+      }
+    } catch (error) {
+      console.error('Error checking existing customer:', error);
+      setExistingCustomer(null);
+    } finally {
+      setCheckingCustomer(false);
+    }
+  };
+
+  // Debounce mobile number check
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (!initialData) { // Only check if not editing
+        checkExistingCustomer(formData.mobile);
+      }
+    }, 500);
+
+    return () => clearTimeout(timeoutId);
+  }, [formData.mobile, user, initialData]);
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
@@ -102,15 +149,34 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ onSubmit, initialData, user
       return;
     }
 
-    onSubmit({
-      name: formData.name.trim(),
-      mobile: formData.mobile.trim(),
-      visitDate: formData.visitDate,
-      services: formData.services,
-      paymentAmount: Number(formData.paymentAmount),
-      birthday: formData.birthday || undefined,
-      notes: formData.notes.trim() || undefined
-    });
+    if (existingCustomer) {
+      // Adding a new visit to existing customer
+      const visitData: NewVisit = {
+        customerId: existingCustomer.id,
+        visitDate: formData.visitDate,
+        services: formData.services,
+        paymentAmount: Number(formData.paymentAmount),
+        notes: formData.visitNotes.trim() || undefined
+      };
+      onSubmit(visitData);
+    } else {
+      // Creating new customer with first visit
+      const customerData: NewCustomerWithVisit = {
+        customer: {
+          name: formData.name.trim(),
+          mobile: formData.mobile.trim(),
+          birthday: formData.birthday || undefined,
+          notes: formData.notes.trim() || undefined
+        },
+        visit: {
+          visitDate: formData.visitDate,
+          services: formData.services,
+          paymentAmount: Number(formData.paymentAmount),
+          notes: formData.visitNotes.trim() || undefined
+        }
+      };
+      onSubmit(customerData);
+    }
   };
 
   const handleServiceToggle = (service: string) => {
@@ -124,6 +190,33 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ onSubmit, initialData, user
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+      {/* Existing Customer Alert */}
+      {existingCustomer && (
+        <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="flex items-center">
+            <div className="flex-shrink-0">
+              <div className="h-8 w-8 bg-blue-100 rounded-full flex items-center justify-center">
+                <span className="text-blue-600 font-medium text-sm">
+                  {existingCustomer.name.charAt(0).toUpperCase()}
+                </span>
+              </div>
+            </div>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-blue-800">
+                Returning Customer: {existingCustomer.name}
+              </h3>
+              <div className="mt-1 text-sm text-blue-600">
+                <p>Total visits: {existingCustomer.totalVisits}</p>
+                <p>Total spent: {currencySymbol}{existingCustomer.totalSpent.toFixed(2)}</p>
+                {existingCustomer.lastVisitDate && (
+                  <p>Last visit: {new Date(existingCustomer.lastVisitDate).toLocaleDateString()}</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Customer Name */}
         <div>
@@ -139,6 +232,7 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ onSubmit, initialData, user
               errors.name ? 'border-red-300' : 'border-gray-300'
             }`}
             placeholder="Enter customer name"
+            disabled={!!existingCustomer}
           />
           {errors.name && <p className="mt-1 text-sm text-red-600">{errors.name}</p>}
         </div>
@@ -148,16 +242,24 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ onSubmit, initialData, user
           <label htmlFor="mobile" className="block text-sm font-medium text-gray-700 mb-2">
             Mobile Number *
           </label>
-          <input
-            type="tel"
-            id="mobile"
-            value={formData.mobile}
-            onChange={(e) => setFormData(prev => ({ ...prev, mobile: e.target.value }))}
-            className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-              errors.mobile ? 'border-red-300' : 'border-gray-300'
-            }`}
-            placeholder="+1 (555) 123-4567"
-          />
+          <div className="relative">
+            <input
+              type="tel"
+              id="mobile"
+              value={formData.mobile}
+              onChange={(e) => setFormData(prev => ({ ...prev, mobile: e.target.value }))}
+              className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                errors.mobile ? 'border-red-300' : 'border-gray-300'
+              }`}
+              placeholder="+1 (555) 123-4567"
+              disabled={!!existingCustomer}
+            />
+            {checkingCustomer && (
+              <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                <RefreshCw className="h-4 w-4 animate-spin text-gray-400" />
+              </div>
+            )}
+          </div>
           {errors.mobile && <p className="mt-1 text-sm text-red-600">{errors.mobile}</p>}
         </div>
 
@@ -261,21 +363,39 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ onSubmit, initialData, user
             value={formData.birthday}
             onChange={(e) => setFormData(prev => ({ ...prev, birthday: e.target.value }))}
             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            disabled={!!existingCustomer}
           />
         </div>
 
-        {/* Notes */}
+        {/* Customer Notes */}
+        {!existingCustomer && (
+          <div>
+            <label htmlFor="notes" className="block text-sm font-medium text-gray-700 mb-2">
+              Customer Notes (Optional)
+            </label>
+            <textarea
+              id="notes"
+              value={formData.notes}
+              onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
+              rows={2}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder="Any additional notes about the customer..."
+            />
+          </div>
+        )}
+
+        {/* Visit Notes */}
         <div>
-          <label htmlFor="notes" className="block text-sm font-medium text-gray-700 mb-2">
-            Additional Notes (Optional)
+          <label htmlFor="visitNotes" className="block text-sm font-medium text-gray-700 mb-2">
+            Visit Notes (Optional)
           </label>
           <textarea
-            id="notes"
-            value={formData.notes}
-            onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-            rows={3}
+            id="visitNotes"
+            value={formData.visitNotes}
+            onChange={(e) => setFormData(prev => ({ ...prev, visitNotes: e.target.value }))}
+            rows={2}
             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            placeholder="Any additional notes about the customer or service..."
+            placeholder="Any notes specific to this visit..."
           />
         </div>
 
@@ -293,7 +413,7 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ onSubmit, initialData, user
             className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center"
           >
             <Save className="h-4 w-4 mr-2" />
-            {initialData ? 'Update Customer' : 'Save Customer'}
+            {existingCustomer ? 'Add Visit' : 'Save Customer'}
           </button>
         </div>
       </form>

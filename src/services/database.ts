@@ -1,29 +1,90 @@
 import { supabase, handleSupabaseError, handleSuccess } from '../lib/supabase';
-import type { Customer, Campaign, WhatsAppTemplate, Analytics, Service } from '../types';
+import type { Customer, CustomerWithLatestVisit, Visit, NewVisit, NewCustomerWithVisit, Campaign, WhatsAppTemplate, Analytics, Service } from '../types';
 
 // Customer operations
 export const customerService = {
-  async getAll() {
+  // Backward compatible version - works with old schema
+  async getAll(userId?: string) {
     try {
-      const { data, error } = await supabase
-        .from('customers')
-        .select('*')
-        .order('created_at', { ascending: false });
+      // Check if we're using new schema (has user_id) or old schema
+      const query = supabase.from('customers').select('*');
+      
+      // If userId is provided, try to filter by user_id (new schema)
+      if (userId) {
+        try {
+          const { data: testData } = await supabase
+            .from('customers')
+            .select('user_id')
+            .limit(1);
+          
+          // If user_id column exists, use new schema approach
+          if (testData !== null) {
+            query.eq('user_id', userId);
+          }
+        } catch {
+          // user_id column doesn't exist, use old schema
+        }
+      }
+      
+      const { data, error } = await query.order('created_at', { ascending: false });
 
       if (error) return handleSupabaseError(error);
       
-      // Convert snake_case to camelCase
-      const convertedData = (data || []).map(row => ({
-        id: row.id,
-        name: row.name,
-        mobile: row.mobile,
-        visitDate: row.visit_date,
-        services: row.services,
-        paymentAmount: row.payment_amount,
-        birthday: row.birthday,
-        notes: row.notes,
-        createdAt: row.created_at
-      }));
+      // Convert to new format while maintaining backward compatibility
+      const convertedData: CustomerWithLatestVisit[] = (data || []).map(row => {
+        // Check if this is old schema format
+        if (row.visit_date && row.services && row.payment_amount !== undefined) {
+          // Old schema - convert to new format
+          return {
+            id: row.id,
+            userId: row.user_id || 'legacy',
+            name: row.name,
+            mobile: row.mobile,
+            birthday: row.birthday,
+            notes: row.notes,
+            totalVisits: 1, // Assume 1 visit for legacy data
+            totalSpent: row.payment_amount,
+            lastVisitDate: row.visit_date,
+            createdAt: row.created_at,
+            updatedAt: row.updated_at || row.created_at,
+            visits: [{
+              id: `legacy-${row.id}`,
+              customerId: row.id,
+              visitDate: row.visit_date,
+              services: row.services,
+              paymentAmount: row.payment_amount,
+              notes: row.notes,
+              createdAt: row.created_at
+            }],
+            latestVisit: {
+              id: `legacy-${row.id}`,
+              customerId: row.id,
+              visitDate: row.visit_date,
+              services: row.services,
+              paymentAmount: row.payment_amount,
+              notes: row.notes,
+              createdAt: row.created_at
+            }
+          };
+        } else {
+          // New schema - return as is with empty visits if not loaded
+          return {
+            id: row.id,
+            userId: row.user_id || 'legacy',
+            name: row.name,
+            mobile: row.mobile,
+            birthday: row.birthday,
+            notes: row.notes,
+            totalVisits: row.total_visits || 0,
+            totalSpent: row.total_spent || 0,
+            lastVisitDate: row.last_visit_date,
+            createdAt: row.created_at,
+            updatedAt: row.updated_at || row.created_at,
+            visits: [],
+            latestVisit: undefined
+          };
+        }
+      });
       
       return handleSuccess(convertedData);
     } catch (error) {
@@ -31,18 +92,69 @@ export const customerService = {
     }
   },
 
-  async create(customer: Omit<Customer, 'id' | 'createdAt'>) {
+  async findByMobile(userId: string, mobile: string) {
+    try {
+      const { data, error } = await supabase
+        .from('customers')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('mobile', mobile)
+        .single();
+
+      if (error) {
+        if (error.code === 'PGRST116') {
+          // No customer found
+          return handleSuccess(null);
+        }
+        return handleSupabaseError(error);
+      }
+      
+      const convertedData = {
+        id: data.id,
+        userId: data.user_id,
+        name: data.name,
+        mobile: data.mobile,
+        birthday: data.birthday,
+        notes: data.notes,
+        totalVisits: data.total_visits,
+        totalSpent: data.total_spent,
+        lastVisitDate: data.last_visit_date,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at
+      };
+      
+      return handleSuccess(convertedData);
+    } catch (error) {
+      return handleSupabaseError(error);
+    }
+  },
+
+  // Backward compatible create - handles both old and new data formats
+  async create(userIdOrCustomerData: string | Omit<Customer, 'id' | 'createdAt'>, customerData?: NewCustomerWithVisit) {
+    // Check if this is old API call (customerData directly) or new API call (userId + customerData)
+    if (typeof userIdOrCustomerData === 'string' && customerData) {
+      // New API format
+      const userId = userIdOrCustomerData;
+      return this.createWithVisits(userId, customerData);
+    } else {
+      // Old API format - convert to new format
+      const oldCustomerData = userIdOrCustomerData as Omit<Customer, 'id' | 'createdAt'>;
+      return this.createLegacy(oldCustomerData);
+    }
+  },
+
+  async createLegacy(customerData: any) {
     try {
       const { data, error } = await supabase
         .from('customers')
         .insert([{
-          name: customer.name,
-          mobile: customer.mobile,
-          visit_date: customer.visitDate,
-          services: customer.services,
-          payment_amount: customer.paymentAmount,
-          birthday: customer.birthday,
-          notes: customer.notes,
+          name: customerData.name,
+          mobile: customerData.mobile,
+          visit_date: customerData.visitDate,
+          services: customerData.services,
+          payment_amount: customerData.paymentAmount,
+          birthday: customerData.birthday,
+          notes: customerData.notes,
           created_at: new Date().toISOString()
         }])
         .select()
@@ -50,20 +162,93 @@ export const customerService = {
 
       if (error) return handleSupabaseError(error);
       
-      // Convert back to camelCase
+      // Convert back to expected format
       const convertedData = {
         id: data.id,
+        userId: data.user_id || 'legacy',
         name: data.name,
         mobile: data.mobile,
-        visitDate: data.visit_date,
-        services: data.services,
-        paymentAmount: data.payment_amount,
         birthday: data.birthday,
         notes: data.notes,
-        createdAt: data.created_at
+        totalVisits: 1,
+        totalSpent: data.payment_amount,
+        lastVisitDate: data.visit_date,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at || data.created_at,
+        latestVisit: {
+          id: `legacy-${data.id}`,
+          customerId: data.id,
+          visitDate: data.visit_date,
+          services: data.services,
+          paymentAmount: data.payment_amount,
+          notes: data.notes,
+          createdAt: data.created_at
+        }
       };
       
       return handleSuccess(convertedData);
+    } catch (error) {
+      return handleSupabaseError(error);
+    }
+  },
+
+  async createWithVisits(userId: string, customerData: NewCustomerWithVisit) {
+    try {
+      // Start a transaction to create customer and first visit
+      const { data: customer, error: customerError } = await supabase
+        .from('customers')
+        .insert([{
+          user_id: userId,
+          name: customerData.customer.name,
+          mobile: customerData.customer.mobile,
+          birthday: customerData.customer.birthday,
+          notes: customerData.customer.notes
+        }])
+        .select()
+        .single();
+
+      if (customerError) return handleSupabaseError(customerError);
+      
+      // Create the first visit
+      const { data: visit, error: visitError } = await supabase
+        .from('visits')
+        .insert([{
+          customer_id: customer.id,
+          visit_date: customerData.visit.visitDate,
+          services: customerData.visit.services,
+          payment_amount: customerData.visit.paymentAmount,
+          notes: customerData.visit.notes
+        }])
+        .select()
+        .single();
+
+      if (visitError) return handleSupabaseError(visitError);
+      
+      // Convert back to camelCase
+      const convertedCustomer: CustomerWithLatestVisit = {
+        id: customer.id,
+        userId: customer.user_id,
+        name: customer.name,
+        mobile: customer.mobile,
+        birthday: customer.birthday,
+        notes: customer.notes,
+        totalVisits: 1, // Will be updated by trigger
+        totalSpent: customerData.visit.paymentAmount, // Will be updated by trigger
+        lastVisitDate: customerData.visit.visitDate, // Will be updated by trigger
+        createdAt: customer.created_at,
+        updatedAt: customer.updated_at,
+        latestVisit: {
+          id: visit.id,
+          customerId: visit.customer_id,
+          visitDate: visit.visit_date,
+          services: visit.services,
+          paymentAmount: visit.payment_amount,
+          notes: visit.notes,
+          createdAt: visit.created_at
+        }
+      };
+      
+      return handleSuccess(convertedCustomer);
     } catch (error) {
       return handleSupabaseError(error);
     }
@@ -75,10 +260,7 @@ export const customerService = {
       const dbUpdates: any = {};
       if (updates.name) dbUpdates.name = updates.name;
       if (updates.mobile) dbUpdates.mobile = updates.mobile;
-      if (updates.visitDate) dbUpdates.visit_date = updates.visitDate;
-      if (updates.services) dbUpdates.services = updates.services;
-      if (updates.paymentAmount !== undefined) dbUpdates.payment_amount = updates.paymentAmount;
-      if (updates.birthday) dbUpdates.birthday = updates.birthday;
+      if (updates.birthday !== undefined) dbUpdates.birthday = updates.birthday;
       if (updates.notes !== undefined) dbUpdates.notes = updates.notes;
 
       const { data, error } = await supabase
@@ -93,14 +275,16 @@ export const customerService = {
       // Convert back to camelCase
       const convertedData = {
         id: data.id,
+        userId: data.user_id,
         name: data.name,
         mobile: data.mobile,
-        visitDate: data.visit_date,
-        services: data.services,
-        paymentAmount: data.payment_amount,
         birthday: data.birthday,
         notes: data.notes,
-        createdAt: data.created_at
+        totalVisits: data.total_visits,
+        totalSpent: data.total_spent,
+        lastVisitDate: data.last_visit_date,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at
       };
       
       return handleSuccess(convertedData);
@@ -123,11 +307,12 @@ export const customerService = {
     }
   },
 
-  async getUpcomingBirthdays() {
+  async getUpcomingBirthdays(userId: string) {
     try {
       const { data, error } = await supabase
         .from('customers')
         .select('name, birthday, mobile')
+        .eq('user_id', userId)
         .not('birthday', 'is', null);
 
       if (error) return handleSupabaseError(error);
@@ -146,6 +331,151 @@ export const customerService = {
       });
 
       return handleSuccess(upcomingBirthdays);
+    } catch (error) {
+      return handleSupabaseError(error);
+    }
+  }
+};
+
+// Visit operations
+export const visitService = {
+  async getAll(userId: string) {
+    try {
+      const { data, error } = await supabase
+        .from('visits')
+        .select(`
+          *,
+          customers!inner (
+            user_id,
+            name
+          )
+        `)
+        .eq('customers.user_id', userId)
+        .order('visit_date', { ascending: false });
+
+      if (error) return handleSupabaseError(error);
+      
+      // Convert snake_case to camelCase
+      const convertedData = (data || []).map(row => ({
+        id: row.id,
+        customerId: row.customer_id,
+        visitDate: row.visit_date,
+        services: row.services,
+        paymentAmount: row.payment_amount,
+        notes: row.notes,
+        createdAt: row.created_at
+      }));
+      
+      return handleSuccess(convertedData);
+    } catch (error) {
+      return handleSupabaseError(error);
+    }
+  },
+
+  async getByCustomer(customerId: string) {
+    try {
+      const { data, error } = await supabase
+        .from('visits')
+        .select('*')
+        .eq('customer_id', customerId)
+        .order('visit_date', { ascending: false });
+
+      if (error) return handleSupabaseError(error);
+      
+      // Convert snake_case to camelCase
+      const convertedData = (data || []).map(row => ({
+        id: row.id,
+        customerId: row.customer_id,
+        visitDate: row.visit_date,
+        services: row.services,
+        paymentAmount: row.payment_amount,
+        notes: row.notes,
+        createdAt: row.created_at
+      }));
+      
+      return handleSuccess(convertedData);
+    } catch (error) {
+      return handleSupabaseError(error);
+    }
+  },
+
+  async create(visitData: NewVisit) {
+    try {
+      const { data, error } = await supabase
+        .from('visits')
+        .insert([{
+          customer_id: visitData.customerId,
+          visit_date: visitData.visitDate,
+          services: visitData.services,
+          payment_amount: visitData.paymentAmount,
+          notes: visitData.notes
+        }])
+        .select()
+        .single();
+
+      if (error) return handleSupabaseError(error);
+      
+      // Convert back to camelCase
+      const convertedData = {
+        id: data.id,
+        customerId: data.customer_id,
+        visitDate: data.visit_date,
+        services: data.services,
+        paymentAmount: data.payment_amount,
+        notes: data.notes,
+        createdAt: data.created_at
+      };
+      
+      return handleSuccess(convertedData);
+    } catch (error) {
+      return handleSupabaseError(error);
+    }
+  },
+
+  async update(id: string, updates: Partial<Visit>) {
+    try {
+      // Convert camelCase to snake_case for database
+      const dbUpdates: any = {};
+      if (updates.visitDate) dbUpdates.visit_date = updates.visitDate;
+      if (updates.services) dbUpdates.services = updates.services;
+      if (updates.paymentAmount !== undefined) dbUpdates.payment_amount = updates.paymentAmount;
+      if (updates.notes !== undefined) dbUpdates.notes = updates.notes;
+
+      const { data, error } = await supabase
+        .from('visits')
+        .update(dbUpdates)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) return handleSupabaseError(error);
+      
+      // Convert back to camelCase
+      const convertedData = {
+        id: data.id,
+        customerId: data.customer_id,
+        visitDate: data.visit_date,
+        services: data.services,
+        paymentAmount: data.payment_amount,
+        notes: data.notes,
+        createdAt: data.created_at
+      };
+      
+      return handleSuccess(convertedData);
+    } catch (error) {
+      return handleSupabaseError(error);
+    }
+  },
+
+  async delete(id: string) {
+    try {
+      const { error } = await supabase
+        .from('visits')
+        .delete()
+        .eq('id', id);
+
+      if (error) return handleSupabaseError(error);
+      return handleSuccess({ id });
     } catch (error) {
       return handleSupabaseError(error);
     }
