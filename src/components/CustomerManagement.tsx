@@ -10,46 +10,69 @@ import {
   Gift,
   ExternalLink
 } from 'lucide-react';
-import type { Customer } from '../types';
+import type { CustomerWithLatestVisit, NewCustomerWithVisit, NewVisit } from '../types';
 import { useCurrency } from '../contexts/CurrencyContext';
 import CustomerForm from './CustomerForm';
 
 interface CustomerManagementProps {
-  customers: Customer[];
-  onAddCustomer: (customer: Omit<Customer, 'id' | 'createdAt'>) => void;
-  onEditCustomer: (id: string, customer: Partial<Customer>) => void;
+  customers: CustomerWithLatestVisit[];
+  onAddCustomer: (customer: NewCustomerWithVisit) => void;
+  onAddVisit: (visit: NewVisit) => void;
+  onEditCustomer: (id: string, customer: Partial<CustomerWithLatestVisit>) => void;
   onDeleteCustomer: (id: string) => void;
 }
 
 const CustomerManagement: React.FC<CustomerManagementProps> = ({
   customers,
   onAddCustomer,
+  onAddVisit,
   onEditCustomer,
   onDeleteCustomer
 }) => {
   const { formatCurrency } = useCurrency();
   const [showForm, setShowForm] = useState(false);
-  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [editingCustomer, setEditingCustomer] = useState<CustomerWithLatestVisit | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterService, setFilterService] = useState('');
 
   const filteredCustomers = customers.filter(customer => {
     const matchesSearch = customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          customer.mobile.includes(searchTerm);
-    const matchesFilter = !filterService || customer.services.includes(filterService);
+    const matchesFilter = !filterService || 
+      (customer.latestVisit && customer.latestVisit.services.includes(filterService));
     return matchesSearch && matchesFilter;
   });
 
   const services = ['Haircut', 'Beard Trim', 'Shave', 'Hair Wash', 'Styling', 'Facial'];
 
-  const handleAddCustomer = (customerData: Omit<Customer, 'id' | 'createdAt'>) => {
-    onAddCustomer(customerData);
+  const handleAddCustomerOrVisit = (customerData: NewCustomerWithVisit | NewVisit) => {
+    if ('customer' in customerData) {
+      // New customer with first visit
+      onAddCustomer(customerData);
+    } else {
+      // New visit for existing customer
+      onAddVisit(customerData);
+    }
     setShowForm(false);
+    setEditingCustomer(null);
   };
 
-  const handleEditCustomer = (customerData: Omit<Customer, 'id' | 'createdAt'>) => {
-    if (editingCustomer) {
-      onEditCustomer(editingCustomer.id, customerData);
+  const handleEditCustomer = (customerData: NewCustomerWithVisit | NewVisit) => {
+    if (editingCustomer && 'customer' in customerData) {
+      onEditCustomer(editingCustomer.id, {
+        name: customerData.customer.name,
+        mobile: customerData.customer.mobile,
+        birthday: customerData.customer.birthday,
+        notes: customerData.customer.notes
+      });
+      // Also add the visit
+      onAddVisit({
+        customerId: editingCustomer.id,
+        visitDate: customerData.visit.visitDate,
+        services: customerData.visit.services,
+        paymentAmount: customerData.visit.paymentAmount,
+        notes: customerData.visit.notes
+      });
       setEditingCustomer(null);
     }
   };
@@ -77,8 +100,7 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({
         </div>
         <CustomerForm
           initialData={editingCustomer || undefined}
-          onSubmit={editingCustomer ? handleEditCustomer : handleAddCustomer}
-          services={services}
+          onSubmit={handleAddCustomerOrVisit}
         />
       </div>
     );
@@ -159,10 +181,13 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({
                     Last Visit
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Services
+                    Latest Services
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Amount Paid
+                    Total Spent
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Visits
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Actions
@@ -203,23 +228,30 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
                         <Calendar className="h-4 w-4 text-gray-400 mr-2" />
-                        <span className="text-sm text-gray-900">{formatDate(customer.visitDate)}</span>
+                        <span className="text-sm text-gray-900">
+                          {customer.lastVisitDate ? formatDate(customer.lastVisitDate) : 'No visits'}
+                        </span>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex flex-wrap gap-1">
-                        {customer.services.map((service, index) => (
+                        {customer.latestVisit ? customer.latestVisit.services.map((service, index) => (
                           <span
                             key={index}
                             className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
                           >
                             {service}
                           </span>
-                        ))}
+                        )) : (
+                          <span className="text-sm text-gray-500">No services</span>
+                        )}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm font-medium text-gray-900">{formatCurrency(customer.paymentAmount)}</span>
+                      <span className="text-sm font-medium text-gray-900">{formatCurrency(customer.totalSpent)}</span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className="text-sm text-gray-900">{customer.totalVisits}</span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center space-x-2">
