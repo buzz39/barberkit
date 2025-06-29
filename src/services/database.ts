@@ -692,53 +692,65 @@ export const templateService = {
 
 // Analytics operations
 export const analyticsService = {
-  async getAnalytics(): Promise<{ success: boolean; data?: Analytics; error?: string }> {
+  async getAnalytics(userId?: string): Promise<{ success: boolean; data?: Analytics; error?: string }> {
     try {
-      // Get all customers
-      const { data: customers, error: customersError } = await supabase
-        .from('customers')
-        .select('*');
-
-      if (customersError) return handleSupabaseError(customersError);
+      // First get user's customers if userId is provided
+      let customerIds: string[] = [];
+      if (userId) {
+        const { data: customers, error: customersError } = await supabase
+          .from('customers')
+          .select('id')
+          .eq('user_id', userId);
+        
+        if (customersError) return handleSupabaseError(customersError);
+        customerIds = (customers || []).map(c => c.id);
+      }
+      
+      // Get visits data, filtered by user's customers if needed
+      let visitsQuery = supabase.from('visits').select('*');
+      if (userId && customerIds.length > 0) {
+        visitsQuery = visitsQuery.in('customer_id', customerIds);
+      }
+      
+      const { data: visits, error: visitsError } = await visitsQuery;
+      if (visitsError) return handleSupabaseError(visitsError);
 
       const now = new Date();
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
       const monthAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-      const customersData = customers || [];
+      const visitsData = visits || [];
 
-      // Calculate today's metrics (using database field names)
-      const todayCustomers = customersData.filter(c => 
-        new Date(c.visit_date) >= today
+      // Calculate today's metrics from visits
+      const todayVisits = visitsData.filter(v => 
+        new Date(v.visit_date) >= today
       );
-      const todayRevenue = todayCustomers.reduce((sum, c) => sum + c.payment_amount, 0);
+      const todayRevenue = todayVisits.reduce((sum, v) => sum + (v.payment_amount || 0), 0);
+      const todayCustomers = new Set(todayVisits.map(v => v.customer_id)).size;
 
       // Calculate weekly metrics
-      const weeklyCustomers = customersData.filter(c => 
-        new Date(c.visit_date) >= weekAgo
+      const weeklyVisits = visitsData.filter(v => 
+        new Date(v.visit_date) >= weekAgo
       );
-      const weeklyRevenue = weeklyCustomers.reduce((sum, c) => sum + c.payment_amount, 0);
+      const weeklyRevenue = weeklyVisits.reduce((sum, v) => sum + (v.payment_amount || 0), 0);
+      const weeklyCustomers = new Set(weeklyVisits.map(v => v.customer_id)).size;
 
       // Calculate monthly metrics
-      const monthlyCustomers = customersData.filter(c => 
-        new Date(c.visit_date) >= monthAgo
+      const monthlyVisits = visitsData.filter(v => 
+        new Date(v.visit_date) >= monthAgo
       );
-      const monthlyRevenue = monthlyCustomers.reduce((sum, c) => sum + c.payment_amount, 0);
+      const monthlyRevenue = monthlyVisits.reduce((sum, v) => sum + (v.payment_amount || 0), 0);
+      const monthlyCustomers = new Set(monthlyVisits.map(v => v.customer_id)).size;
 
-// Calculate popular services from visits
-      const { data: visitData, error: visitError } = await supabase
-        .from('visits')
-        .select('services')
-        .neq('services', '{}');
-      
-      if (visitError) return handleSupabaseError(visitError);
-      
+      // Calculate popular services from the already fetched visits data
       const serviceCount: { [key: string]: number } = {};
-      visitData.forEach(visit => {
-        visit.services.forEach(service => {
-          serviceCount[service] = (serviceCount[service] || 0) + 1;
-        });
+      visitsData.forEach(visit => {
+        if (visit.services && Array.isArray(visit.services)) {
+          visit.services.forEach(service => {
+            serviceCount[service] = (serviceCount[service] || 0) + 1;
+          });
+        }
       });
 
       const popularServices = Object.entries(serviceCount)
@@ -747,18 +759,28 @@ export const analyticsService = {
         .slice(0, 10);
 
       // Get upcoming birthdays
-      const upcomingBirthdaysResult = await customerService.getUpcomingBirthdays();
-      const upcomingBirthdays = upcomingBirthdaysResult.success ? upcomingBirthdaysResult.data : [];
+      let upcomingBirthdays = [];
+      if (userId) {
+        const upcomingBirthdaysResult = await customerService.getUpcomingBirthdays(userId);
+        upcomingBirthdays = upcomingBirthdaysResult.success ? upcomingBirthdaysResult.data : [];
+      }
 
       const analytics: Analytics = {
-        todayCustomers: todayCustomers.length,
+        todayCustomers,
         todayRevenue,
-        weeklyCustomers: weeklyCustomers.length,
+        weeklyCustomers,
         weeklyRevenue,
-        monthlyCustomers: monthlyCustomers.length,
+        monthlyCustomers,
         monthlyRevenue,
+        totalCustomers: userId ? 
+          (await supabase.from('customers').select('id', { count: 'exact' }).eq('user_id', userId)).count || 0 :
+          (await supabase.from('customers').select('id', { count: 'exact' })).count || 0,
+        averageVisitValue: visitsData.length > 0 ? 
+          visitsData.reduce((sum, v) => sum + (v.payment_amount || 0), 0) / visitsData.length : 0,
         popularServices,
-        upcomingBirthdays
+        upcomingBirthdays,
+        recentVisits: await getRecentVisitsWithCustomers(visitsData.slice(0, 10), userId),
+        topCustomers: [] // Will be calculated separately if needed
       };
 
       return handleSuccess(analytics);
@@ -1131,6 +1153,73 @@ export const serviceService = {
     } catch (error) {
       return handleSupabaseError(error);
     }
+  }
+};
+
+// Helper function to get recent visits with customer names
+const getRecentVisitsWithCustomers = async (visits: any[], userId?: string) => {
+  if (!visits || visits.length === 0) return [];
+  
+  try {
+    // Get customer names for the visits
+    const customerIds = [...new Set(visits.map(v => v.customer_id))];
+    
+    let customersQuery = supabase
+      .from('customers')
+      .select('id, name')
+      .in('id', customerIds);
+    
+    if (userId) {
+      customersQuery = customersQuery.eq('user_id', userId);
+    }
+    
+    const { data: customers, error } = await customersQuery;
+    
+    if (error) {
+      console.error('Error fetching customer names:', error);
+      // Return visits without customer names if there's an error
+      return visits.map(v => ({
+        id: v.id,
+        customerId: v.customer_id,
+        customerName: 'Unknown Customer',
+        visitDate: v.visit_date,
+        services: v.services,
+        paymentAmount: v.payment_amount,
+        notes: v.notes,
+        createdAt: v.created_at
+      }));
+    }
+    
+    // Create a map for quick customer name lookup
+    const customerMap = new Map();
+    (customers || []).forEach(customer => {
+      customerMap.set(customer.id, customer.name);
+    });
+    
+    // Combine visits with customer names
+    return visits.map(v => ({
+      id: v.id,
+      customerId: v.customer_id,
+      customerName: customerMap.get(v.customer_id) || 'Unknown Customer',
+      visitDate: v.visit_date,
+      services: v.services,
+      paymentAmount: v.payment_amount,
+      notes: v.notes,
+      createdAt: v.created_at
+    }));
+  } catch (error) {
+    console.error('Error in getRecentVisitsWithCustomers:', error);
+    // Return visits without customer names if there's an error
+    return visits.map(v => ({
+      id: v.id,
+      customerId: v.customer_id,
+      customerName: 'Unknown Customer',
+      visitDate: v.visit_date,
+      services: v.services,
+      paymentAmount: v.payment_amount,
+      notes: v.notes,
+      createdAt: v.created_at
+    }));
   }
 };
 

@@ -15,6 +15,7 @@ export interface Customer {
 export interface Visit {
   id: string;
   customerId: string;
+  customerName?: string; // Optional for backward compatibility
   visitDate: string;
   services: string[];
   paymentAmount: number;
