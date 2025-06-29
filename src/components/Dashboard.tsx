@@ -17,6 +17,21 @@ interface DashboardProps {
   analytics: Analytics;
 }
 
+// Helper function to calculate time ago
+const getTimeAgo = (date: Date): string => {
+  const now = new Date();
+  const diffInMs = now.getTime() - date.getTime();
+  const diffInMins = Math.floor(diffInMs / (1000 * 60));
+  const diffInHours = Math.floor(diffInMs / (1000 * 60 * 60));
+  const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
+  
+  if (diffInMins < 1) return 'Just now';
+  if (diffInMins < 60) return `${diffInMins} min${diffInMins > 1 ? 's' : ''} ago`;
+  if (diffInHours < 24) return `${diffInHours} hour${diffInHours > 1 ? 's' : ''} ago`;
+  if (diffInDays < 7) return `${diffInDays} day${diffInDays > 1 ? 's' : ''} ago`;
+  return date.toLocaleDateString();
+};
+
 const Dashboard: React.FC<DashboardProps> = ({ analytics }) => {
   const { formatCurrency } = useCurrency();
   
@@ -167,32 +182,43 @@ const Dashboard: React.FC<DashboardProps> = ({ analytics }) => {
 
       {/* Recent Activity */}
       <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
-        <h3 className="text-xl font-bold text-gray-900 mb-6">Recent Activity</h3>
+        <h3 className="text-xl font-bold text-gray-900 mb-6">Recent Visits</h3>
         <div className="space-y-4">
-          <div className="flex items-center p-4 bg-gradient-to-r from-blue-50 to-cyan-50 rounded-xl border-l-4 border-blue-500">
-            <div className="h-3 w-3 bg-blue-500 rounded-full mr-4 animate-pulse"></div>
-            <div className="flex-1">
-              <p className="text-gray-900 font-semibold">New customer registered</p>
-              <p className="text-sm text-gray-600">John Doe booked a haircut appointment</p>
+          {analytics.recentVisits && analytics.recentVisits.length > 0 ? (
+            analytics.recentVisits.slice(0, 5).map((visit, index) => {
+              const visitDate = new Date(visit.visitDate);
+              const timeAgo = getTimeAgo(visitDate);
+              const gradients = [
+                'from-blue-50 to-cyan-50 border-blue-500',
+                'from-green-50 to-emerald-50 border-green-500', 
+                'from-purple-50 to-pink-50 border-purple-500',
+                'from-orange-50 to-yellow-50 border-orange-500',
+                'from-indigo-50 to-blue-50 border-indigo-500'
+              ];
+              const colors = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-orange-500', 'bg-indigo-500'];
+              
+              return (
+                <div key={visit.id} className={`flex items-center p-4 bg-gradient-to-r ${gradients[index % gradients.length]} rounded-xl border-l-4`}>
+                  <div className={`h-3 w-3 ${colors[index % colors.length]} rounded-full mr-4`}></div>
+                  <div className="flex-1">
+                    <p className="text-gray-900 font-semibold">Visit completed</p>
+                    <p className="text-sm text-gray-600">
+                      {visit.services.join(', ')} • ₹{visit.paymentAmount}
+                    </p>
+                  </div>
+                  <span className="text-sm text-gray-500 bg-white px-3 py-1 rounded-full">{timeAgo}</span>
+                </div>
+              );
+            })
+          ) : (
+            <div className="text-center py-8">
+              <div className="h-12 w-12 bg-gray-200 rounded-full mx-auto mb-3 flex items-center justify-center">
+                <span className="text-gray-400 text-xl">📋</span>
+              </div>
+              <p className="text-gray-500 font-medium">No recent visits</p>
+              <p className="text-gray-400 text-sm">Recent customer visits will appear here</p>
             </div>
-            <span className="text-sm text-gray-500 bg-white px-3 py-1 rounded-full">2 mins ago</span>
-          </div>
-          <div className="flex items-center p-4 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl border-l-4 border-green-500">
-            <div className="h-3 w-3 bg-green-500 rounded-full mr-4"></div>
-            <div className="flex-1">
-              <p className="text-gray-900 font-semibold">Payment received</p>
-              <p className="text-sm text-gray-600">$45 from Mike Johnson</p>
-            </div>
-            <span className="text-sm text-gray-500 bg-white px-3 py-1 rounded-full">5 mins ago</span>
-          </div>
-          <div className="flex items-center p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl border-l-4 border-purple-500">
-            <div className="h-3 w-3 bg-purple-500 rounded-full mr-4"></div>
-            <div className="flex-1">
-              <p className="text-gray-900 font-semibold">Campaign sent</p>
-              <p className="text-sm text-gray-600">Birthday wishes sent to 12 customers</p>
-            </div>
-            <span className="text-sm text-gray-500 bg-white px-3 py-1 rounded-full">1 hour ago</span>
-          </div>
+          )}
         </div>
       </div>
     </div>
