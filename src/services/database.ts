@@ -735,15 +735,15 @@ export const analyticsService = {
       if (visitError) return handleSupabaseError(visitError);
       
       const serviceCount: { [key: string]: number } = {};
-      visitData.forEach(visit = {
-        visit.services.forEach(service = {
+      visitData.forEach(visit => {
+        visit.services.forEach(service => {
           serviceCount[service] = (serviceCount[service] || 0) + 1;
         });
       });
 
       const popularServices = Object.entries(serviceCount)
-        .map(([name, count]) = ({ name, count }))
-        .sort((a, b) = b.count - a.count)
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count)
         .slice(0, 10);
 
       // Get upcoming birthdays
