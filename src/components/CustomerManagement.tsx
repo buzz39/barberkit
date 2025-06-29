@@ -11,6 +11,8 @@ import {
   ExternalLink
 } from 'lucide-react';
 import type { CustomerWithLatestVisit, NewCustomerWithVisit, NewVisit } from '../types';
+import CustomerHistoryModal from './CustomerHistoryModal';
+import { Eye } from 'lucide-react';
 import { useCurrency } from '../contexts/CurrencyContext';
 import CustomerForm from './CustomerForm';
 
@@ -32,6 +34,7 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({
   const { formatCurrency } = useCurrency();
   const [showForm, setShowForm] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<CustomerWithLatestVisit | null>(null);
+  const [viewingHistory, setViewingHistory] = useState<CustomerWithLatestVisit | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterService, setFilterService] = useState('');
 
@@ -256,6 +259,12 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center space-x-2">
                         <button
+                          onClick={() => setViewingHistory(customer)}
+                          className="p-2 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </button>
+                        <button
                           onClick={() => setEditingCustomer(customer)}
                           className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                         >
@@ -283,6 +292,15 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({
         )}
       </div>
     </div>
+
+    {viewingHistory && (
+      <CustomerHistoryModal
+        isOpen={!!viewingHistory}
+        onClose={() => setViewingHistory(null)}
+        customer={viewingHistory}
+        onAddVisit={onAddVisit}
+      />
+    )}
   );
 };
 
