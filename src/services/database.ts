@@ -779,15 +779,7 @@ export const analyticsService = {
           visitsData.reduce((sum, v) => sum + (v.payment_amount || 0), 0) / visitsData.length : 0,
         popularServices,
         upcomingBirthdays,
-        recentVisits: visitsData.slice(0, 10).map(v => ({
-          id: v.id,
-          customerId: v.customer_id,
-          visitDate: v.visit_date,
-          services: v.services,
-          paymentAmount: v.payment_amount,
-          notes: v.notes,
-          createdAt: v.created_at
-        })),
+        recentVisits: await getRecentVisitsWithCustomers(visitsData.slice(0, 10), userId),
         topCustomers: [] // Will be calculated separately if needed
       };
 
@@ -1161,6 +1153,73 @@ export const serviceService = {
     } catch (error) {
       return handleSupabaseError(error);
     }
+  }
+};
+
+// Helper function to get recent visits with customer names
+const getRecentVisitsWithCustomers = async (visits: any[], userId?: string) => {
+  if (!visits || visits.length === 0) return [];
+  
+  try {
+    // Get customer names for the visits
+    const customerIds = [...new Set(visits.map(v => v.customer_id))];
+    
+    let customersQuery = supabase
+      .from('customers')
+      .select('id, name')
+      .in('id', customerIds);
+    
+    if (userId) {
+      customersQuery = customersQuery.eq('user_id', userId);
+    }
+    
+    const { data: customers, error } = await customersQuery;
+    
+    if (error) {
+      console.error('Error fetching customer names:', error);
+      // Return visits without customer names if there's an error
+      return visits.map(v => ({
+        id: v.id,
+        customerId: v.customer_id,
+        customerName: 'Unknown Customer',
+        visitDate: v.visit_date,
+        services: v.services,
+        paymentAmount: v.payment_amount,
+        notes: v.notes,
+        createdAt: v.created_at
+      }));
+    }
+    
+    // Create a map for quick customer name lookup
+    const customerMap = new Map();
+    (customers || []).forEach(customer => {
+      customerMap.set(customer.id, customer.name);
+    });
+    
+    // Combine visits with customer names
+    return visits.map(v => ({
+      id: v.id,
+      customerId: v.customer_id,
+      customerName: customerMap.get(v.customer_id) || 'Unknown Customer',
+      visitDate: v.visit_date,
+      services: v.services,
+      paymentAmount: v.payment_amount,
+      notes: v.notes,
+      createdAt: v.created_at
+    }));
+  } catch (error) {
+    console.error('Error in getRecentVisitsWithCustomers:', error);
+    // Return visits without customer names if there's an error
+    return visits.map(v => ({
+      id: v.id,
+      customerId: v.customer_id,
+      customerName: 'Unknown Customer',
+      visitDate: v.visit_date,
+      services: v.services,
+      paymentAmount: v.payment_amount,
+      notes: v.notes,
+      createdAt: v.created_at
+    }));
   }
 };
 

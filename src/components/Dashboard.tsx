@@ -201,7 +201,9 @@ const Dashboard: React.FC<DashboardProps> = ({ analytics }) => {
                 <div key={visit.id} className={`flex items-center p-4 bg-gradient-to-r ${gradients[index % gradients.length]} rounded-xl border-l-4`}>
                   <div className={`h-3 w-3 ${colors[index % colors.length]} rounded-full mr-4`}></div>
                   <div className="flex-1">
-                    <p className="text-gray-900 font-semibold">Visit completed</p>
+                    <p className="text-gray-900 font-semibold">
+                      {visit.customerName || 'Unknown Customer'}
+                    </p>
                     <p className="text-sm text-gray-600">
                       {visit.services.join(', ')} • ₹{visit.paymentAmount}
                     </p>
