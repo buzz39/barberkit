@@ -692,7 +692,7 @@ export const templateService = {
 
 // Analytics operations
 export const analyticsService = {
-  async getAnalytics(): Promise<{ success: boolean; data?: Analytics; error?: string }> {
+  async getAnalytics(userId?: string): Promise<{ success: boolean; data?: Analytics; error?: string }> {
     try {
       // Get all customers
       const { data: customers, error: customersError } = await supabase
@@ -747,8 +747,11 @@ export const analyticsService = {
         .slice(0, 10);
 
       // Get upcoming birthdays
-      const upcomingBirthdaysResult = await customerService.getUpcomingBirthdays();
-      const upcomingBirthdays = upcomingBirthdaysResult.success ? upcomingBirthdaysResult.data : [];
+      let upcomingBirthdays = [];
+      if (userId) {
+        const upcomingBirthdaysResult = await customerService.getUpcomingBirthdays(userId);
+        upcomingBirthdays = upcomingBirthdaysResult.success ? upcomingBirthdaysResult.data : [];
+      }
 
       const analytics: Analytics = {
         todayCustomers: todayCustomers.length,
