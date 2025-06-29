@@ -66,7 +66,7 @@ function AppContent() {
           customerService.getAll(user.id), // Pass user ID for new schema
           campaignService.getAll(),
           templateService.getAll(),
-          analyticsService.getAnalytics()
+          analyticsService.getAnalytics(user.id) // Pass user ID for upcoming birthdays
         ]);
 
         if (customersResult.success) {
@@ -119,7 +119,7 @@ function AppContent() {
       if (result.success) {
         setCustomers(prev => [result.data, ...prev]);
         // Refresh analytics
-        const analyticsResult = await analyticsService.getAnalytics();
+        const analyticsResult = await analyticsService.getAnalytics(user.id);
         if (analyticsResult.success) {
           setAnalytics(analyticsResult.data);
         }
@@ -146,7 +146,7 @@ function AppContent() {
           }
         }
         // Refresh analytics
-        const analyticsResult = await analyticsService.getAnalytics();
+        const analyticsResult = await analyticsService.getAnalytics(user?.id);
         if (analyticsResult.success) {
           setAnalytics(analyticsResult.data);
         }
