@@ -172,7 +172,7 @@ function AppContent() {
           }
         }
         // Refresh analytics
-        const analyticsResult = await analyticsService.getAnalytics();
+        const analyticsResult = await analyticsService.getAnalytics(user?.id);
         if (analyticsResult.success) {
           setAnalytics(analyticsResult.data);
         }
@@ -194,7 +194,7 @@ function AppContent() {
       if (result.success) {
         setCustomers(prev => prev.filter(customer => customer.id !== id));
         // Refresh analytics
-        const analyticsResult = await analyticsService.getAnalytics();
+        const analyticsResult = await analyticsService.getAnalytics(user?.id);
         if (analyticsResult.success) {
           setAnalytics(analyticsResult.data);
         }
