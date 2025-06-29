@@ -31,11 +31,13 @@ export const customerService = {
       if (error) return handleSupabaseError(error);
       
       // Convert to new format while maintaining backward compatibility
-      const convertedData: CustomerWithLatestVisit[] = (data || []).map(row => {
+      const convertedData: CustomerWithLatestVisit[] = [];
+      
+      for (const row of data || []) {
         // Check if this is old schema format
         if (row.visit_date && row.services && row.payment_amount !== undefined) {
           // Old schema - convert to new format
-          return {
+          convertedData.push({
             id: row.id,
             userId: row.user_id || 'legacy',
             name: row.name,
@@ -65,10 +67,36 @@ export const customerService = {
               notes: row.notes,
               createdAt: row.created_at
             }
-          };
+          });
         } else {
-          // New schema - return as is with empty visits if not loaded
-          return {
+          // New schema - fetch latest visit from visits table
+          let latestVisit = undefined;
+          
+          try {
+            const { data: visitData, error: visitError } = await supabase
+              .from('visits')
+              .select('*')
+              .eq('customer_id', row.id)
+              .order('visit_date', { ascending: false })
+              .limit(1)
+              .single();
+            
+            if (!visitError && visitData) {
+              latestVisit = {
+                id: visitData.id,
+                customerId: visitData.customer_id,
+                visitDate: visitData.visit_date,
+                services: visitData.services,
+                paymentAmount: visitData.payment_amount,
+                notes: visitData.notes,
+                createdAt: visitData.created_at
+              };
+            }
+          } catch {
+            // No visits found or error - leave latestVisit as undefined
+          }
+          
+          convertedData.push({
             id: row.id,
             userId: row.user_id || 'legacy',
             name: row.name,
@@ -81,10 +109,10 @@ export const customerService = {
             createdAt: row.created_at,
             updatedAt: row.updated_at || row.created_at,
             visits: [],
-            latestVisit: undefined
-          };
+            latestVisit: latestVisit
+          });
         }
-      });
+      }
       
       return handleSuccess(convertedData);
     } catch (error) {
@@ -698,10 +726,17 @@ export const analyticsService = {
       );
       const monthlyRevenue = monthlyCustomers.reduce((sum, c) => sum + c.payment_amount, 0);
 
-      // Calculate popular services
+// Calculate popular services from visits
+      const { data: visitData, error: visitError } = await supabase
+        .from('visits')
+        .select('services')
+        .neq('services', '{}');
+      
+      if (visitError) return handleSupabaseError(visitError);
+      
       const serviceCount: { [key: string]: number } = {};
-      customersData.forEach(customer => {
-        customer.services.forEach(service => {
+      visitData.forEach(visit => {
+        visit.services.forEach(service => {
           serviceCount[service] = (serviceCount[service] || 0) + 1;
         });
       });
