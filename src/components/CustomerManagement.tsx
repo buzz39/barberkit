@@ -291,16 +291,16 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({
           </div>
         )}
       </div>
-    </div>
 
-    {viewingHistory && (
-      <CustomerHistoryModal
-        isOpen={!!viewingHistory}
-        onClose={() => setViewingHistory(null)}
-        customer={viewingHistory}
-        onAddVisit={onAddVisit}
-      />
-    )}
+      {viewingHistory && (
+        <CustomerHistoryModal
+          isOpen={!!viewingHistory}
+          onClose={() => setViewingHistory(null)}
+          customer={viewingHistory}
+          onAddVisit={onAddVisit}
+        />
+      )}
+    </div>
   );
 };
 
